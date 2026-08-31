@@ -1,0 +1,22 @@
+:root { font-family: Georgia, serif; color: #eee8da; background: #090b10; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 50% 20%, #252735, #090b10 65%); }
+button, select { font: inherit; }
+button { border: 1px solid #8d7754; border-radius: 4px; color: #f3ead8; background: #27231f; padding: .65rem 1rem; cursor: pointer; }
+button:hover, button.active { background: #6d5839; }
+#app { min-height: 100vh; }
+.shell { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 100vh; }
+.stage { position: relative; min-height: 70vh; }
+#board { width: 100%; height: 100%; min-height: 70vh; display: block; }
+.brand { position: absolute; top: 1rem; left: 1rem; pointer-events: none; text-shadow: 0 2px 8px #000; }
+.brand h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 3.2rem); letter-spacing: .08em; }
+.brand p { margin: .25rem 0; color: #c4b69b; }
+.panel { padding: 1.3rem; background: #11131acc; border-left: 1px solid #413a30; backdrop-filter: blur(8px); }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.card { margin-top: 1rem; padding: 1rem; border: 1px solid #423c32; background: #171820; }
+.card h2, .card h3 { margin-top: 0; }
+.controls { display: grid; gap: .7rem; }
+select { width: 100%; padding: .55rem; color: inherit; background: #24242d; border: 1px solid #665a48; }
+.status { min-height: 3rem; color: #d4c7ad; line-height: 1.45; }
+.small { color: #9d978c; font: .85rem system-ui, sans-serif; }
+@media (max-width: 800px) { .shell { grid-template-columns: 1fr; } .panel { border-left: 0; border-top: 1px solid #413a30; } .stage, #board { min-height: 58vh; } }
