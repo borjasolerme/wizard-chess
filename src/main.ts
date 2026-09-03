@@ -48,6 +48,13 @@ const stockfish = new StockfishEngine()
 const gameTools: WebMCP.ModelContextTool[] = []
 let voiceController: VoiceController | null = null
 
+const icons = {
+  microphone: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></svg>`,
+  academy: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c3-.8 5.5.1 8 2.1v11c-2.5-2-5-2.9-8-2.1V5.5ZM20 5.5c-3-.8-5.5.1-8 2.1v11c2.5-2 5-2.9 8-2.1V5.5Z"/><path d="M17.5 2v3M16 3.5h3"/></svg>`,
+  mentor: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-6 13h12L12 3ZM7 16l-2 4h14l-2-4"/><path d="m12.5 8 .6 1.2 1.4.2-1 1 .3 1.4-1.3-.7-1.3.7.3-1.4-1-1 1.4-.2.6-1.2Z"/></svg>`,
+  battle: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 6 6-2 2-6-6 2-2ZM19 4l-6 6 2 2 6-6-2-2ZM9 14l-5 5M15 14l5 5M3 21l3-3M21 21l-3-3"/></svg>`,
+} as const
+
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell awaiting-choice">
     <section class="stage">
@@ -108,9 +115,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <h2>Choose your path</h2>
           <p class="entry-intro">Learn the magic, face a guided opponent, or step straight into battle.</p>
           <div class="entry-actions">
-            <button id="choose-learn" class="recommended-path"><em>Continue</em><strong>Academy</strong><span id="next-lesson-copy">Learn one idea on the board</span></button>
-            <button id="choose-mentor"><em>Recommended</em><strong>Mentor game</strong><span>Play freely and ask the Wizard when you want advice</span></button>
-            <button id="choose-play"><em>Quick</em><strong>Battle</strong><span>Face Stockfish without coaching</span></button>
+            <button id="choose-learn" class="recommended-path"><span class="path-icon">${icons.academy}</span><em>Continue</em><strong>Academy</strong><span id="next-lesson-copy">Learn one idea on the board</span></button>
+            <button id="choose-mentor"><span class="path-icon">${icons.mentor}</span><em>Recommended</em><strong>Mentor game</strong><span>Play freely and ask the Wizard when you want advice</span></button>
+            <button id="choose-play"><span class="path-icon">${icons.battle}</span><em>Quick</em><strong>Battle</strong><span>Face Stockfish without coaching</span></button>
           </div>
         </div>
       </section>
@@ -129,7 +136,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </section>
 
       <div class="voice-dock">
-        <button id="voice-toggle" class="voice-button" aria-pressed="false">Start voice</button>
+        <button id="voice-toggle" class="voice-button" aria-pressed="false">${icons.microphone}<span data-voice-label>Start voice</span></button>
         <div id="voice-status" class="voice-status">Voice ready</div>
         <div id="voice-transcript" class="voice-transcript" aria-live="polite"></div>
       </div>

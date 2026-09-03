@@ -53,7 +53,9 @@ export class VoiceController {
   }
 
   private renderButton() {
-    this.options.button.textContent = this.enabled ? 'Stop voice' : 'Start voice'
+    const label = this.options.button.querySelector<HTMLElement>('[data-voice-label]')
+    if (label) label.textContent = this.enabled ? 'Stop voice' : 'Start voice'
+    else this.options.button.textContent = this.enabled ? 'Stop voice' : 'Start voice'
     this.options.button.classList.toggle('active', this.enabled)
     this.options.button.setAttribute('aria-pressed', String(this.enabled))
   }
