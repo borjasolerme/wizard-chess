@@ -38,9 +38,11 @@ Deploy the site and open it in ChatGPT's in-app browser, which supports WebMCP. 
 
 For Chrome testing, open `chrome://flags/#enable-webmcp-testing`, enable the flag, and restart Chrome. When WebMCP is unavailable, the app shows a message and remains fully playable through the UI.
 
-Registered tools: `list_lessons`, `start_lesson`, `make_move`, `get_game_state`, `explain_last_move`, `set_difficulty`, `get_leaderboard`, and `start_ranked_game`.
+The complete WebMCP surface has 18 tools covering lessons, every legal move, full game state, explanations, difficulty, playing either color, pause/resume, undo, resignation, agreed draws, saved games, custom FEN positions, camera views, and the local leaderboard.
 
 Every meaningful action is available through these tools, so a player can use voice with the browser agent to start lessons, inspect the position, change difficulty, start games, and play moves without typing or manually operating the board.
+
+Tools: `list_lessons`, `start_lesson`, `make_move`, `get_game_state`, `explain_last_move`, `set_difficulty`, `get_leaderboard`, `set_game_paused`, `undo_last_turn`, `resign_game`, `offer_draw`, `save_game`, `list_saved_games`, `load_saved_game`, `delete_saved_game`, `load_custom_position`, `set_camera_view`, and `start_ranked_game`.
 
 ## Roadmap, not in this version
 

@@ -5,15 +5,22 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
+type PlayerColor = 'white' | 'black'
+type CameraView = 'white' | 'black' | 'top' | 'cinematic'
 type ToolResult = { content: Array<{ type: 'text'; text: string }> }
+type SavedGame = { fen: string; history?: string[]; mode: Mode; difficulty: Difficulty; playerColor: PlayerColor; outcome: string | null; savedAt: string }
 
 const lessons = [{ id: 'pawn-basics', title: 'How a pawn moves', description: 'Move a pawn forward one square, or two from its starting rank. Pawns capture diagonally.' }]
-const game = new Chess()
+let game = new Chess()
 let mode: Mode = 'learn'
 let difficulty: Difficulty = 'apprentice'
 let selected: Square | null = null
 let lastMove: Move | null = null
 let rankedWins = Number(localStorage.getItem('wizard-chess-wins') ?? 0)
+let playerColor: PlayerColor = 'white'
+let paused = false
+let outcome: string | null = null
+const savedGamesKey = 'wizard-chess-saved-games'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell">
@@ -105,7 +112,7 @@ function finishMove(move: Move) {
   selected = null
   renderPosition()
   updateStatus(describeMove(lastMove))
-  if (game.isCheckmate() && lastMove.color === 'w' && mode === 'ranked') {
+  if (game.isCheckmate() && lastMove.color === (playerColor === 'white' ? 'w' : 'b') && mode === 'ranked') {
     rankedWins += 1
     localStorage.setItem('wizard-chess-wins', String(rankedWins))
     document.querySelector('#wins')!.textContent = String(rankedWins)
@@ -128,19 +135,31 @@ function chooseAiMove() {
   return moves.sort((a, b) => ((values[b.captured ?? ''] ?? 0) + Math.random() * noise) - ((values[a.captured ?? ''] ?? 0) + Math.random() * noise))[0]
 }
 async function maybeAiTurn() {
-  if (mode !== 'ranked' || game.turn() !== 'b' || game.isGameOver()) return null
+  const humanTurn = playerColor === 'white' ? 'w' : 'b'
+  if (mode !== 'ranked' || game.turn() === humanTurn || game.isGameOver() || paused || outcome) return null
   updateStatus(`${difficulty} is thinking…`)
   return new Promise<Move | null>(resolve => window.setTimeout(() => {
     const move = chooseAiMove()
     resolve(move ? playMove(move.from, move.to, move.promotion) : null)
   }, 450))
 }
-function startGame() { game.reset(); lastMove = null; selected = null; renderPosition(); updateStatus('New ranked game. White to move.'); }
+async function startGame(color: PlayerColor = playerColor) {
+  playerColor = color
+  paused = false
+  outcome = null
+  game.reset()
+  lastMove = null
+  selected = null
+  renderPosition()
+  updateStatus(`New ranked game. You play ${playerColor}.`)
+  return maybeAiTurn()
+}
 
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 canvas.addEventListener('click', event => {
-  if (game.turn() !== 'w' || game.isGameOver()) return
+  const humanTurn = mode === 'learn' ? 'w' : playerColor === 'white' ? 'w' : 'b'
+  if (game.turn() !== humanTurn || game.isGameOver() || paused || outcome) return
   const rect = canvas.getBoundingClientRect()
   pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
   raycaster.setFromCamera(pointer, camera)
@@ -148,9 +167,9 @@ canvas.addEventListener('click', event => {
   const square = hit?.object.userData.square as Square | undefined
   if (!square) return
   const piece = game.get(square)
-  if (!selected && piece?.color === 'w') selected = square
+  if (!selected && piece?.color === humanTurn) selected = square
   else if (selected) {
-    if (piece?.color === 'w') selected = square
+    if (piece?.color === humanTurn) selected = square
     else if (playMove(selected, square)) void maybeAiTurn()
     else updateStatus('That move is not legal. Choose again.')
   }
@@ -160,7 +179,7 @@ canvas.addEventListener('click', event => {
 document.querySelector('#learn')!.addEventListener('click', () => setMode('learn'))
 document.querySelector('#ranked')!.addEventListener('click', () => setMode('ranked'))
 document.querySelector('#start-lesson')!.addEventListener('click', () => { setMode('learn'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.') })
-document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); startGame() })
+document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector<HTMLSelectElement>('#difficulty')!.addEventListener('change', event => { difficulty = (event.target as HTMLSelectElement).value as Difficulty; updateStatus(`Difficulty set to ${difficulty}.`) })
 function setMode(next: Mode) {
   mode = next
@@ -174,14 +193,43 @@ function gameState() {
   return {
     mode,
     difficulty,
+    playerColor,
+    paused,
+    outcome,
     fen: game.fen(),
     sideToMove: game.turn() === 'w' ? 'white' : 'black',
-    gameOver: game.isGameOver(),
+    gameOver: game.isGameOver() || outcome !== null,
     check: game.inCheck(),
     lastMove: lastMove ? { san: lastMove.san, from: lastMove.from, to: lastMove.to } : null,
     legalMoves: game.moves(),
     localVictories: rankedWins,
   }
+}
+
+function readSavedGames(): Record<string, SavedGame> {
+  try { return JSON.parse(localStorage.getItem(savedGamesKey) ?? '{}') as Record<string, SavedGame> }
+  catch { return {} }
+}
+
+function writeSavedGames(savedGames: Record<string, SavedGame>) {
+  localStorage.setItem(savedGamesKey, JSON.stringify(savedGames))
+}
+
+function restoreLastMove() {
+  const history = game.history({ verbose: true })
+  lastMove = history.length ? history[history.length - 1] : null
+}
+
+function setCameraView(view: CameraView) {
+  const positions: Record<CameraView, [number, number, number]> = {
+    white: [0, 9, 10],
+    black: [0, 9, -10],
+    top: [0, 14, 0.01],
+    cinematic: [8, 10, 10],
+  }
+  camera.position.set(...positions[view])
+  controls.target.set(0, 0, 0)
+  controls.update()
 }
 
 function defineTool<const Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) { return tool }
@@ -195,8 +243,12 @@ async function registerTools() {
   const registrations: Promise<void>[] = []
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => registrations.push(context.registerTool(tool, { signal: controller.signal }))
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
-  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
+  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
+      if (paused) return textResult({ error: 'The game is paused. Resume it before moving.', state: gameState() })
+      if (outcome) return textResult({ error: `The game has ended: ${outcome}. Start or load a game before moving.`, state: gameState() })
+      const playableColor = mode === 'learn' ? 'w' : playerColor === 'white' ? 'w' : 'b'
+      if (game.turn() !== playableColor) return textResult({ error: `It is ${game.turn() === 'w' ? 'White' : 'Black'} to move; the player controls ${mode === 'learn' ? 'White in this lesson' : playerColor}.`, state: gameState() })
       const normalized = notation.trim()
       const uci = normalized.toLowerCase().match(/^([a-h][1-8])([a-h][1-8])([qrbn])?$/)
       const move = uci ? playMove(uci[1], uci[2], uci[3] ?? 'q') : playSanMove(normalized)
@@ -209,7 +261,114 @@ async function registerTools() {
   addTool(defineTool({ name: 'explain_last_move', title: 'Explain the last move', description: 'Explains the most recent move on the shared board in plain language.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(describeMove(lastMove)) }))
   addTool(defineTool({ name: 'set_difficulty', title: 'Set opponent difficulty', description: 'Sets the ranked opponent to Apprentice, Duelist, or Master and updates the visible selector.', inputSchema: { type: 'object', properties: { level: { type: 'string', enum: ['apprentice', 'duelist', 'master'], description: 'Opponent strength.' } }, required: ['level'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ level }) => { if (level !== 'apprentice' && level !== 'duelist' && level !== 'master') return textResult({ error: 'Difficulty must be apprentice, duelist, or master.', state: gameState() }); difficulty = level; document.querySelector<HTMLSelectElement>('#difficulty')!.value = level; updateStatus(`Difficulty set to ${level}.`); return textResult({ message: `Difficulty set to ${level}.`, state: gameState() }) } }))
   addTool(defineTool({ name: 'get_leaderboard', title: 'View local leaderboard', description: 'Returns the player\'s local ranked victory count from this browser.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult([{ rank: 1, player: 'You', wins: rankedWins }]) }))
-  addTool(defineTool({ name: 'start_ranked_game', title: 'Start a ranked game', description: 'Starts or restarts a ranked game against the selected local opponent and visibly resets the shared board. The player is White.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => { setMode('ranked'); startGame(); return textResult({ message: 'Ranked game started. You are White.', state: gameState() }) } }))
+  addTool(defineTool({ name: 'set_game_paused', title: 'Pause or resume the game', description: 'Pauses or resumes the current game. Moves are blocked while paused, and the visible status is updated.', inputSchema: { type: 'object', properties: { paused: { type: 'boolean', description: 'True to pause; false to resume.' } }, required: ['paused'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ paused: shouldPause }) => {
+    if (outcome) return textResult({ error: `The game has ended: ${outcome}.`, state: gameState() })
+    paused = shouldPause
+    updateStatus(paused ? 'Game paused.' : 'Game resumed.')
+    const opponentMove = paused ? null : await maybeAiTurn()
+    return textResult({ message: paused ? 'Game paused.' : 'Game resumed.', opponentMove: opponentMove?.san ?? null, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'undo_last_turn', title: 'Undo the last turn', description: 'Rewinds the previous player turn. In ranked mode it normally removes both the opponent reply and the player move so the player can choose again.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    const undone: string[] = []
+    const first = game.undo()
+    if (!first) return textResult({ error: 'There are no moves to undo.', state: gameState() })
+    undone.push(first.san)
+    if (mode === 'ranked') {
+      const second = game.undo()
+      if (second) undone.push(second.san)
+    }
+    outcome = null
+    paused = false
+    restoreLastMove()
+    renderPosition()
+    updateStatus(`Undid ${undone.reverse().join(' and ')}.`)
+    return textResult({ message: 'Previous turn undone.', undone, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'resign_game', title: 'Resign the current game', description: 'Ends the current ranked game as a resignation by the player and updates the visible status.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (mode !== 'ranked') return textResult({ error: 'Resignation is available in ranked mode.', state: gameState() })
+    if (outcome || game.isGameOver()) return textResult({ error: 'The game has already ended.', state: gameState() })
+    outcome = `${playerColor} resigned`
+    selected = null
+    updateStatus(`Game over: ${playerColor} resigned.`)
+    return textResult({ message: `You resigned as ${playerColor}.`, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'offer_draw', title: 'Offer a draw', description: 'Offers a draw to the local opponent. In this prototype the opponent accepts, ending the ranked game as a draw.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (mode !== 'ranked') return textResult({ error: 'Draw offers are available in ranked mode.', state: gameState() })
+    if (outcome || game.isGameOver()) return textResult({ error: 'The game has already ended.', state: gameState() })
+    outcome = 'draw by agreement'
+    selected = null
+    updateStatus('Game over: draw by agreement.')
+    return textResult({ message: 'Draw offered and accepted by the local opponent.', state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'save_game', title: 'Save the current game', description: 'Saves the current position and game settings under a spoken name in this browser.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Short name for the saved game.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
+    const normalizedName = name.trim()
+    if (!normalizedName || normalizedName.length > 40) return textResult({ error: 'Save name must contain 1 to 40 characters.' })
+    const savedGames = readSavedGames()
+    savedGames[normalizedName] = { fen: game.fen(), history: game.history(), mode, difficulty, playerColor, outcome, savedAt: new Date().toISOString() }
+    writeSavedGames(savedGames)
+    updateStatus(`Game saved as ${normalizedName}.`)
+    return textResult({ message: `Game saved as ${normalizedName}.`, save: savedGames[normalizedName] })
+  } }))
+  addTool(defineTool({ name: 'list_saved_games', title: 'List saved games', description: 'Lists saved games available in this browser with their names, modes, colors, and save times.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(Object.entries(readSavedGames()).map(([name, saved]) => ({ name, mode: saved.mode, playerColor: saved.playerColor, savedAt: saved.savedAt }))) }))
+  addTool(defineTool({ name: 'load_saved_game', title: 'Load a saved game', description: 'Loads a named saved game, restoring its position and settings on the visible board.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Exact saved-game name returned by list_saved_games.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
+    const saved = readSavedGames()[name]
+    if (!saved) return textResult({ error: `No saved game named "${name}".`, available: Object.keys(readSavedGames()) })
+    try {
+      const restoredGame = new Chess()
+      if (saved.history?.length) {
+        for (const move of saved.history) restoredGame.move(move)
+        if (restoredGame.fen() !== saved.fen) throw new Error('Saved history does not match its position.')
+      } else restoredGame.load(saved.fen)
+      game = restoredGame
+    } catch { return textResult({ error: `Saved game "${name}" contains invalid or inconsistent data.` }) }
+    mode = saved.mode
+    difficulty = saved.difficulty
+    playerColor = saved.playerColor
+    outcome = saved.outcome
+    paused = false
+    selected = null
+    restoreLastMove()
+    document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
+    setMode(mode)
+    renderPosition()
+    updateStatus(`Loaded ${name}.`)
+    return textResult({ message: `Loaded ${name}.`, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'delete_saved_game', title: 'Delete a saved game', description: 'Deletes one named saved game from this browser without changing the current board.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Exact saved-game name returned by list_saved_games.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
+    const savedGames = readSavedGames()
+    if (!savedGames[name]) return textResult({ error: `No saved game named "${name}".`, available: Object.keys(savedGames) })
+    delete savedGames[name]
+    writeSavedGames(savedGames)
+    return textResult({ message: `Deleted saved game ${name}.`, remaining: Object.keys(savedGames) })
+  } }))
+  addTool(defineTool({ name: 'load_custom_position', title: 'Load a custom chess position', description: 'Loads a valid FEN position onto the visible board for analysis or practice.', inputSchema: { type: 'object', properties: { fen: { type: 'string', minLength: 1, description: 'A complete Forsyth-Edwards Notation position.' } }, required: ['fen'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ fen }) => {
+    try { game.load(fen) } catch { return textResult({ error: 'The supplied FEN position is invalid.', state: gameState() }) }
+    mode = 'learn'
+    paused = false
+    outcome = null
+    selected = null
+    lastMove = null
+    setMode('learn')
+    renderPosition()
+    updateStatus('Custom position loaded for analysis.')
+    return textResult({ message: 'Custom position loaded.', state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'set_camera_view', title: 'Change the board camera', description: 'Changes the visible 3D board camera to the White side, Black side, top-down, or cinematic view.', inputSchema: { type: 'object', properties: { view: { type: 'string', enum: ['white', 'black', 'top', 'cinematic'], description: 'Desired board viewpoint.' } }, required: ['view'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ view }) => {
+    if (view !== 'white' && view !== 'black' && view !== 'top' && view !== 'cinematic') return textResult({ error: 'Camera view must be white, black, top, or cinematic.' })
+    setCameraView(view)
+    return textResult({ message: `Camera changed to ${view} view.` })
+  } }))
+  addTool(defineTool({ name: 'start_ranked_game', title: 'Start a ranked game', description: 'Starts or restarts a ranked game and visibly resets the board. The player may choose White or Black and an opponent difficulty.', inputSchema: { type: 'object', properties: { color: { type: 'string', enum: ['white', 'black'], description: 'Color the player wants to control.' }, level: { type: 'string', enum: ['apprentice', 'duelist', 'master'], description: 'Optional opponent strength.' } }, additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ color, level }) => {
+    const chosenColor = color ?? playerColor
+    if (chosenColor !== 'white' && chosenColor !== 'black') return textResult({ error: 'Color must be white or black.', state: gameState() })
+    if (level && level !== 'apprentice' && level !== 'duelist' && level !== 'master') return textResult({ error: 'Difficulty must be apprentice, duelist, or master.', state: gameState() })
+    if (level) difficulty = level
+    document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
+    setMode('ranked')
+    const openingMove = await startGame(chosenColor)
+    if (chosenColor === 'black') setCameraView('black')
+    return textResult({ message: `Ranked game started. You are ${chosenColor}.`, opponentOpeningMove: openingMove?.san ?? null, state: gameState() })
+  } }))
   try {
     await Promise.all(registrations)
     indicator.textContent = `WebMCP ready: ${registrations.length} tools registered. You can control the whole game by voice through your agent.`
