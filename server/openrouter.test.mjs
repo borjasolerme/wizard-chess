@@ -32,4 +32,18 @@ describe('voice understanding', () => {
     expect(request.provider).toEqual({ sort: 'latency' })
     expect(request.messages[1].content[1]).toEqual({ type: 'input_audio', input_audio: { data: 'a'.repeat(500), format: 'webm' } })
   })
+
+  it('speaks with the British male wizard voice in English', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { 'Content-Type': 'audio/mpeg' },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await handleVoice({ action: 'speak', text: 'Your move.', language: 'en' }, 'test-key')
+
+    expect(result.status).toBe(200)
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(request.voice).toBe('bm_george')
+  })
 })

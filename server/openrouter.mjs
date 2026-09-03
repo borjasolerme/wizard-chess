@@ -4,8 +4,8 @@ const models = {
   speech: 'hexgrad/kokoro-82m',
 }
 const voices = {
-  en: 'af_heart', es: 'ef_dora', fr: 'ff_siwis', hi: 'hf_alpha',
-  it: 'if_sara', ja: 'jf_alpha', pt: 'pf_dora', zh: 'zf_xiaoxiao',
+  en: 'bm_george', es: 'em_alex', fr: 'ff_siwis', hi: 'hm_omega',
+  it: 'im_nicola', ja: 'jm_kumo', pt: 'pm_alex', zh: 'zm_yunxi',
 }
 
 function headers(apiKey) {
