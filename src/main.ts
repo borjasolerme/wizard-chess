@@ -63,8 +63,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="more-popover">
           <button id="restart-game">New game</button>
           <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
-          <div id="webmcp" class="small"></div>
-          <div class="small">Qwen ASR · GLM Flash · Kokoro</div>
         </div>
       </details>
     </section>
@@ -273,7 +271,6 @@ function setCameraView(view: CameraView) {
 function defineTool<const Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) { return tool }
 
 async function registerTools() {
-  const indicator = document.querySelector<HTMLDivElement>('#webmcp')!
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
@@ -406,16 +403,13 @@ async function registerTools() {
     return textResult({ message: `Ranked game started. You are ${chosenColor}.`, opponentOpeningMove: openingMove?.san ?? null, state: gameState() })
   } }))
   const context = document.modelContext
-  if (!context) { indicator.textContent = 'WebMCP is not available in this browser. Built-in AI voice still controls the same game actions.'; return }
+  if (!context) return
   const controller = new AbortController()
   const registrations = gameTools.map(tool => context.registerTool(tool, { signal: controller.signal }))
   try {
     await Promise.all(registrations)
-    indicator.textContent = `WebMCP ready: ${registrations.length} tools registered. You can control the whole game by voice through your agent.`
   } catch (error) {
     controller.abort()
-    const message = error instanceof Error ? error.message : String(error)
-    indicator.textContent = `WebMCP registration failed: ${message}`
     console.error('WebMCP registration failed', error)
   }
 }
