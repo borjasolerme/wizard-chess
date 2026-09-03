@@ -93,6 +93,12 @@ export class VoiceController {
     await this.runLoop()
   }
 
+  async narrate(text: string, language = 'en') {
+    if (this.enabled || !text.trim()) return
+    try { await this.speak(text, language) }
+    catch { this.setStatus('Voice ready') }
+  }
+
   private async runLoop() {
     while (this.enabled) {
       try {

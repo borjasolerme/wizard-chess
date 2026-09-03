@@ -52,11 +52,6 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .replay-exit { width: 100%; margin-top: .6rem; padding: .55rem; border: 0; color: var(--muted); background: transparent; font-size: .72rem; }
 .replay-exit:hover { color: var(--paper); }
 
-.mentor-card { position: absolute; z-index: 3; right: clamp(1.2rem, 3vw, 2.7rem); bottom: clamp(5.5rem, 9vw, 7rem); width: min(20rem, calc(100vw - 2.4rem)); padding: 1rem 1.1rem 1.1rem; border: 1px solid rgba(135,159,222,.34); border-radius: .35rem; background: linear-gradient(145deg, rgba(17,21,32,.92), rgba(9,11,17,.88)); box-shadow: 0 18px 70px rgba(0,0,0,.42), inset 0 0 40px rgba(93,117,184,.06); backdrop-filter: blur(18px); }
-.mentor-card[hidden] { display: none; }
-.mentor-grade { margin: .4rem 0 .3rem; color: var(--paper); font: 600 1.45rem/1 "Iowan Old Style", "Palatino Linotype", Palatino, serif; text-transform: capitalize; }
-.mentor-card p { margin: 0; color: #beb9ae; font-size: .78rem; line-height: 1.45; }
-.mentor-card .mentor-plan { margin-top: .7rem; padding-top: .65rem; border-top: 1px solid rgba(255,255,255,.09); color: #c8d4f4; }
 .review-notes { display: grid; grid-template-columns: auto 1fr; gap: .35rem .65rem; margin: .8rem 0; padding: .7rem 0; border-block: 1px solid rgba(255,255,255,.08); }
 .review-notes span { color: var(--muted); font-size: .68rem; }
 .review-notes strong { color: var(--paper); font-size: .76rem; text-transform: capitalize; }
@@ -76,6 +71,17 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .entry-actions span { color: var(--muted); font-size: .72rem; }
 .awaiting-choice .brand { z-index: 4; }
 .awaiting-choice .modes, .awaiting-choice .game-hud { display: none; }
+
+.onboarding-screen { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 6rem 1.2rem; background: rgba(5,7,11,.58); backdrop-filter: blur(3px); }
+.onboarding-screen[hidden] { display: none; }
+.onboarding-card { width: min(32rem, 100%); padding: clamp(1.5rem, 4vw, 2.4rem); border: 1px solid rgba(199,168,107,.38); border-radius: .4rem; background: rgba(11,13,18,.94); box-shadow: 0 24px 90px rgba(0,0,0,.55); }
+.onboarding-card h2 { margin: .55rem 0 .8rem; font: 600 clamp(2rem, 5vw, 3rem)/1 "Iowan Old Style", "Palatino Linotype", Palatino, serif; }
+.onboarding-card > p { margin: 0; color: #d0cbc1; font: 1rem/1.6 "Iowan Old Style", Palatino, serif; }
+.onboarding-card .onboarding-voice { margin-top: 1.25rem; color: var(--gold); font: .7rem/1.4 "Avenir Next", Avenir, system-ui, sans-serif; letter-spacing: .05em; }
+.onboarding-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: 1.5rem; }
+.onboarding-actions button { margin: 0; }
+.onboarding .brand { z-index: 4; }
+.onboarding .modes, .onboarding .game-hud { display: none; }
 
 .voice-dock { position: absolute; z-index: 4; bottom: clamp(1.1rem, 2.5vw, 2rem); left: 50%; display: grid; justify-items: center; width: min(28rem, 74vw); transform: translateX(-50%); pointer-events: none; }
 .voice-button { position: relative; min-width: 8.5rem; padding: .72rem 1.1rem .72rem 2.25rem; border: 1px solid rgba(255,255,255,.2); border-radius: 999px; background: rgba(12,14,18,.82); box-shadow: 0 8px 28px rgba(0,0,0,.35); backdrop-filter: blur(15px); pointer-events: auto; }
@@ -155,7 +161,6 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
   .modes button { min-width: 3.8rem; padding-inline: .65rem; }
   .game-hud { top: 4.8rem; }
   .context-card { bottom: 5.5rem; }
-  .mentor-card { right: 1rem; bottom: 5.2rem; left: 1rem; width: auto; }
   .voice-dock { width: 88vw; }
   .entry-actions { grid-template-columns: 1fr; }
   .academy-list, .trophy-list { grid-template-columns: 1fr; }

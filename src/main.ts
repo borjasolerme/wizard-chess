@@ -4,11 +4,12 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { StockfishEngine } from './stockfish'
 import { VoiceController, type VoiceTool } from './voice'
-import { normalizeOpenRouterKey, openRouterKeyStorageKey, voiceRequestHeaders } from './api-key'
+import { normalizeOpenRouterKey, openRouterKeyStorageKey } from './api-key'
 import { isGameActive, type GamePhase } from './game-session'
 import { curriculum, isExpectedLessonMove, isLessonUnlocked, lessonById, lessons, nextLesson, pawnLesson, type Lesson } from './lesson'
 import { parseProgress, recordGame, recordLesson, trophies, type GameHistory, type ProgressData } from './progress'
 import { assessMove, createPostGameReview, inferMentorTier, rememberInsight, type MentorInsight, type PostGameReview } from './mentor'
+import { completeOnboarding, onboardingSteps, parseCompletedOnboarding, type OnboardingPath } from './onboarding'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -32,7 +33,10 @@ let paused = false
 let outcome: string | null = null
 const savedGamesKey = 'wizard-chess-saved-games'
 const progressKey = 'wizard-chess-progress-v1'
+const onboardingKey = 'wizard-chess-onboarding-v1'
 let progress: ProgressData = parseProgress(localStorage.getItem(progressKey))
+let completedOnboarding = parseCompletedOnboarding(localStorage.getItem(onboardingKey))
+let activeOnboarding: { path: OnboardingPath; step: number } | null = null
 let gameHistoryRecorded = false
 let replay: { entry: GameHistory; index: number } | null = null
 let mentorEnabled = true
@@ -42,6 +46,7 @@ let postGameReview: PostGameReview | null = null
 let turnBusy = false
 const stockfish = new StockfishEngine()
 const gameTools: WebMCP.ModelContextTool[] = []
+let voiceController: VoiceController | null = null
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell awaiting-choice">
@@ -68,13 +73,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <select id="difficulty"><option value="apprentice">Apprentice</option><option value="duelist">Duelist</option><option value="master">Master</option></select>
         <button id="new-game" class="primary-action">Begin game</button>
       </section>
-
-      <aside id="mentor-card" class="mentor-card" hidden aria-live="polite">
-        <span class="eyebrow">The mentor · <span id="mentor-tier"></span></span>
-        <div id="mentor-grade" class="mentor-grade">Your move</div>
-        <p id="mentor-explanation">I will explain the position after every turn.</p>
-        <p id="mentor-plan" class="mentor-plan"></p>
-      </aside>
 
       <section id="post-game" class="context-card post-game-card" hidden>
         <span class="eyebrow">The mentor's review</span>
@@ -111,8 +109,21 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <p class="entry-intro">Learn the magic, face a guided opponent, or step straight into battle.</p>
           <div class="entry-actions">
             <button id="choose-learn" class="recommended-path"><em>Continue</em><strong>Academy</strong><span id="next-lesson-copy">Learn one idea on the board</span></button>
-            <button id="choose-mentor"><em>Recommended</em><strong>Mentor game</strong><span>Play while the Wizard explains every turn</span></button>
+            <button id="choose-mentor"><em>Recommended</em><strong>Mentor game</strong><span>Play freely and ask the Wizard when you want advice</span></button>
             <button id="choose-play"><em>Quick</em><strong>Battle</strong><span>Face Stockfish without coaching</span></button>
+          </div>
+        </div>
+      </section>
+
+      <section id="onboarding-screen" class="onboarding-screen" hidden aria-live="polite">
+        <div class="onboarding-card">
+          <span id="onboarding-position" class="eyebrow"></span>
+          <h2 id="onboarding-title"></h2>
+          <p id="onboarding-copy"></p>
+          <p class="onboarding-voice">Say “next” to continue · “guide me” to hear this again</p>
+          <div class="onboarding-actions">
+            <button id="onboarding-back" class="secondary-action">Back</button>
+            <button id="onboarding-next" class="primary-action">Next</button>
           </div>
         </div>
       </section>
@@ -515,25 +526,8 @@ function sanFromUci(fen: string, uci: string | null) {
   } catch { return uci }
 }
 
-function renderMentorInsight(insight: MentorInsight | null, plan = '') {
+function renderMentorInsight(insight: MentorInsight | null) {
   mentorInsight = insight
-  document.querySelector('#mentor-tier')!.textContent = inferMentorTier(progress.completedLessonIds.length)
-  document.querySelector('#mentor-grade')!.textContent = insight ? insight.grade : 'Reading the board…'
-  document.querySelector('#mentor-explanation')!.textContent = insight?.explanation ?? 'Stockfish and the Wizard are studying your move.'
-  document.querySelector('#mentor-plan')!.textContent = plan
-}
-
-async function requestMentorCopy(insight: MentorInsight, opponentMove: string | null, nextMove: string | null) {
-  if (!openRouterKey()) return null
-  try {
-    const response = await fetch('/api/voice', {
-      method: 'POST',
-      headers: voiceRequestHeaders(openRouterKey()),
-      body: JSON.stringify({ action: 'coach', tier: inferMentorTier(progress.completedLessonIds.length), insight, opponentMove, nextMove, memory: progress.mentorMemory }),
-    })
-    if (!response.ok) return null
-    return response.json() as Promise<{ headline: string; explanation: string; plan: string }>
-  } catch { return null }
 }
 
 async function completePlayerTurn(move: Move, beforeFen: string) {
@@ -559,29 +553,13 @@ async function completePlayerTurn(move: Move, beforeFen: string) {
     currentGameInsights.push(insight)
     progress = { ...progress, mentorMemory: rememberInsight(progress.mentorMemory, insight) }
     persistProgress()
-    renderMentorInsight(insight, bestMoveSan && bestMoveSan !== move.san ? `A stronger choice was ${bestMoveSan}.` : 'Your plan is still alive.')
+    renderMentorInsight(insight)
   }
   if (game.isGameOver()) {
     recordCurrentGame(game.isCheckmate() ? `${move.color === 'w' ? 'White' : 'Black'} won by checkmate` : 'Draw')
     return null
   }
-  const opponentMove = await maybeAiTurn()
-  let nextMove: string | null = null
-  if (mentorEnabled && opponentMove && !game.isGameOver()) {
-    try {
-      const next = await stockfish.analyze(game.fen())
-      nextMove = sanFromUci(game.fen(), next.bestMove)
-    } catch { /* The local explanation remains useful without another engine pass. */ }
-    const copy = mentorInsight ? await requestMentorCopy(mentorInsight, opponentMove.san, nextMove) : null
-    if (copy && mentorInsight) {
-      document.querySelector('#mentor-grade')!.textContent = copy.headline
-      document.querySelector('#mentor-explanation')!.textContent = copy.explanation
-      document.querySelector('#mentor-plan')!.textContent = copy.plan
-    } else if (mentorInsight) {
-      document.querySelector('#mentor-plan')!.textContent = `${describeMove(opponentMove)}${nextMove ? ` Consider ${nextMove} next.` : ''}`
-    }
-  }
-    return opponentMove
+    return await maybeAiTurn()
   } finally {
     turnBusy = false
   }
@@ -594,7 +572,6 @@ function renderPostGameReview(result: string) {
   document.querySelector('#review-strength')!.textContent = postGameReview.strength
   document.querySelector('#review-focus')!.textContent = postGameReview.focus
   document.querySelector<HTMLElement>('#post-game')!.hidden = false
-  document.querySelector<HTMLElement>('#mentor-card')!.hidden = true
   syncProgression()
 }
 
@@ -618,15 +595,8 @@ async function startGame(color: PlayerColor = playerColor) {
   setCameraView(playerColor)
   renderPosition()
   updateStatus(`New ranked game. You play ${playerColor}.`)
-  renderMentorInsight(null, 'Make a move and I will explain what changed.')
-  const openingMove = await maybeAiTurn()
-  if (mentorEnabled && openingMove && !game.isGameOver()) {
-    try {
-      const next = await stockfish.analyze(game.fen())
-      renderMentorInsight(null, `Black opened with ${openingMove.san}. Consider ${sanFromUci(game.fen(), next.bestMove)}.`)
-    } catch { renderMentorInsight(null, `Black opened with ${openingMove.san}.`) }
-  }
-  return openingMove
+  renderMentorInsight(null)
+  return await maybeAiTurn()
 }
 
 const raycaster = new THREE.Raycaster()
@@ -655,11 +625,82 @@ canvas.addEventListener('click', event => {
   renderPosition()
 })
 
-document.querySelector('#learn')!.addEventListener('click', () => setMode('learn'))
-document.querySelector('#ranked')!.addEventListener('click', () => prepareRankedGame(false))
-document.querySelector('#choose-learn')!.addEventListener('click', () => setMode('learn'))
-document.querySelector('#choose-mentor')!.addEventListener('click', () => prepareRankedGame(true))
-document.querySelector('#choose-play')!.addEventListener('click', () => prepareRankedGame(false))
+function onboardingGuidance() {
+  if (!activeOnboarding) return 'No introduction is open.'
+  const step = onboardingSteps[activeOnboarding.path][activeOnboarding.step]
+  return `${step.title}. ${step.body}`
+}
+
+function renderOnboarding() {
+  if (!activeOnboarding) return
+  const steps = onboardingSteps[activeOnboarding.path]
+  const step = steps[activeOnboarding.step]
+  document.querySelector('#onboarding-position')!.textContent = step.eyebrow
+  document.querySelector('#onboarding-title')!.textContent = step.title
+  document.querySelector('#onboarding-copy')!.textContent = step.body
+  document.querySelector<HTMLButtonElement>('#onboarding-back')!.textContent = activeOnboarding.step ? 'Back' : 'Choose another path'
+  document.querySelector<HTMLButtonElement>('#onboarding-next')!.textContent = activeOnboarding.step === steps.length - 1 ? 'Continue' : 'Next'
+  void voiceController?.narrate(onboardingGuidance())
+}
+
+function showOnboarding(path: OnboardingPath) {
+  activeOnboarding = { path, step: 0 }
+  phase = 'onboarding'
+  document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
+  document.querySelector<HTMLElement>('#lesson')!.hidden = true
+  document.querySelector<HTMLElement>('#ranked-setup')!.hidden = true
+  document.querySelector<HTMLElement>('#onboarding-screen')!.hidden = false
+  syncProgression()
+  renderOnboarding()
+}
+
+function routeToPath(path: OnboardingPath) {
+  if (path === 'academy') setMode('learn')
+  else prepareRankedGame(path === 'mentor')
+}
+
+function choosePath(path: OnboardingPath) {
+  if (completedOnboarding.includes(path)) routeToPath(path)
+  else showOnboarding(path)
+}
+
+function advanceOnboarding() {
+  if (!activeOnboarding) return 'No introduction is open.'
+  const steps = onboardingSteps[activeOnboarding.path]
+  if (activeOnboarding.step < steps.length - 1) {
+    activeOnboarding.step += 1
+    renderOnboarding()
+    return onboardingGuidance()
+  }
+  const path = activeOnboarding.path
+  completedOnboarding = completeOnboarding(completedOnboarding, path)
+  localStorage.setItem(onboardingKey, JSON.stringify(completedOnboarding))
+  activeOnboarding = null
+  routeToPath(path)
+  return `${path === 'academy' ? 'Academy' : path === 'mentor' ? 'Mentor game' : 'Battle'} setup is ready.`
+}
+
+function leaveOnboarding() {
+  if (!activeOnboarding) return
+  if (activeOnboarding.step > 0) {
+    activeOnboarding.step -= 1
+    renderOnboarding()
+    return
+  }
+  activeOnboarding = null
+  phase = 'entry'
+  document.querySelector<HTMLElement>('#onboarding-screen')!.hidden = true
+  document.querySelector<HTMLElement>('#entry-screen')!.hidden = false
+  syncProgression()
+}
+
+document.querySelector('#learn')!.addEventListener('click', () => choosePath('academy'))
+document.querySelector('#ranked')!.addEventListener('click', () => choosePath('battle'))
+document.querySelector('#choose-learn')!.addEventListener('click', () => choosePath('academy'))
+document.querySelector('#choose-mentor')!.addEventListener('click', () => choosePath('mentor'))
+document.querySelector('#choose-play')!.addEventListener('click', () => choosePath('battle'))
+document.querySelector('#onboarding-back')!.addEventListener('click', leaveOnboarding)
+document.querySelector('#onboarding-next')!.addEventListener('click', advanceOnboarding)
 document.querySelector('#start-lesson')!.addEventListener('click', () => beginLesson())
 document.querySelector('#repeat-lesson')!.addEventListener('click', () => beginLesson(currentLesson))
 document.querySelector('#next-lesson')!.addEventListener('click', () => {
@@ -857,7 +898,8 @@ function syncProgression() {
   const gameFinished = mode === 'ranked' && (game.isGameOver() || outcome !== null)
   const shell = document.querySelector<HTMLElement>('.shell')!
   shell.classList.toggle('awaiting-choice', phase === 'entry')
-  shell.classList.toggle('setting-up', phase === 'setup')
+  shell.classList.toggle('setting-up', phase === 'setup' || phase === 'onboarding')
+  shell.classList.toggle('onboarding', phase === 'onboarding')
   shell.classList.toggle('lesson-finished', phase === 'complete')
   shell.classList.toggle('replaying', phase === 'replay')
   canvas.setAttribute('aria-disabled', String(!active || gameFinished))
@@ -865,7 +907,6 @@ function syncProgression() {
   document.querySelector<HTMLButtonElement>('#restart-game')!.hidden = !active || mode !== 'ranked'
   document.querySelector<HTMLElement>('#lesson-complete')!.hidden = phase !== 'complete'
   document.querySelector<HTMLElement>('#replay-controls')!.hidden = phase !== 'replay'
-  document.querySelector<HTMLElement>('#mentor-card')!.hidden = !active || mode !== 'ranked' || !mentorEnabled || gameFinished
   document.querySelector<HTMLElement>('#post-game')!.hidden = !active || !gameFinished || !postGameReview
 }
 
@@ -874,9 +915,11 @@ function setMode(next: Mode) {
   lessonRunning = false
   replay = null
   phase = 'setup'
+  activeOnboarding = null
   syncProgression()
   document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
   document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
+  document.querySelector<HTMLElement>('#onboarding-screen')!.hidden = true
   document.querySelector('#learn')!.classList.toggle('active', next === 'learn')
   document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
@@ -896,7 +939,7 @@ function prepareRankedGame(coached: boolean) {
 
 function gameState() {
   return {
-    mode: phase === 'entry' ? null : mode,
+    mode: phase === 'entry' || phase === 'onboarding' ? null : mode,
     phase,
     difficulty,
     playerColor,
@@ -916,8 +959,9 @@ function gameState() {
       instruction: phase === 'complete' ? 'Lesson complete.' : currentLesson.steps[lessonStep].instruction,
     } : null,
     replay: replay ? { historyId: replay.entry.id, move: replay.index, totalMoves: replay.entry.moves.length } : null,
+    onboarding: activeOnboarding ? { path: activeOnboarding.path, step: activeOnboarding.step + 1, totalSteps: onboardingSteps[activeOnboarding.path].length, guidance: onboardingGuidance() } : null,
     mentor: mode === 'ranked' ? { enabled: mentorEnabled, tier: inferMentorTier(progress.completedLessonIds.length), insight: mentorInsight, review: postGameReview } : null,
-    legalMoves: phase === 'complete' || phase === 'replay' ? [] : lessonRunning && phase === 'active' ? currentLesson.steps[lessonStep].moves : game.moves(),
+    legalMoves: phase !== 'active' ? [] : lessonRunning ? currentLesson.steps[lessonStep].moves : game.moves(),
     localVictories: rankedWins,
   }
 }
@@ -972,8 +1016,10 @@ function defineTool<const Schema extends object>(tool: WebMCP.ModelContextToolFr
 async function registerTools() {
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
+  addTool(defineTool({ name: 'advance_onboarding', title: 'Continue the introduction', description: 'Moves the visible one-time onboarding to its next screen when the player says next, continue, or move to the next step.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => activeOnboarding ? textResult({ message: advanceOnboarding(), state: gameState() }) : textResult({ error: 'No introduction is open.', state: gameState() }) }))
+  addTool(defineTool({ name: 'get_onboarding_guidance', title: 'Repeat onboarding guidance', description: 'Repeats and narrates the current onboarding screen when the player says guide me, help me, or repeat that.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult({ message: onboardingGuidance(), state: gameState() }) }))
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists the academy levels, lessons, unlock state, and completion state.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(curriculum.map(level => ({ ...level, lessons: level.lessons.map(lesson => ({ id: lesson.id, title: lesson.title, description: lesson.description, trophy: lesson.trophy, unlocked: isLessonUnlocked(lesson.id, progress.completedLessonIds), completed: progress.completedLessonIds.includes(lesson.id) })) }))) }))
-  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts any unlocked academy lesson and loads its first exercise on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics', 'knight-jumps', 'bishop-lines', 'knight-fork', 'castle-safely', 'mate-in-one'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { const lesson = lessonById(lesson_id); if (!lesson) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(candidate => candidate.id) }); if (!isLessonUnlocked(lesson.id, progress.completedLessonIds)) return textResult({ error: 'Complete the previous lesson to unlock this one.', state: gameState() }); beginLesson(lesson); return textResult({ message: lesson.steps[0].instruction, state: gameState() }) } }))
+  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts any unlocked academy lesson and loads its first exercise on the shared 3D board. Opens the one-time Academy introduction first when needed.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics', 'knight-jumps', 'bishop-lines', 'knight-fork', 'castle-safely', 'mate-in-one'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { const lesson = lessonById(lesson_id); if (!lesson) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(candidate => candidate.id) }); if (!isLessonUnlocked(lesson.id, progress.completedLessonIds)) return textResult({ error: 'Complete the previous lesson to unlock this one.', state: gameState() }); if (!completedOnboarding.includes('academy')) { showOnboarding('academy'); return textResult({ message: onboardingGuidance(), state: gameState() }) } beginLesson(lesson); return textResult({ message: lesson.steps[0].instruction, state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
       if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game before making a move.', state: gameState() })
       if (paused) return textResult({ error: 'The game is paused. Resume it before moving.', state: gameState() })
@@ -992,7 +1038,7 @@ async function registerTools() {
   addTool(defineTool({ name: 'get_game_state', title: 'Inspect the chess game', description: 'Returns the complete current game state needed to coach or play: mode, difficulty, position, side to move, checks, last move, legal moves, and local victories.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(gameState()) }))
   addTool(defineTool({ name: 'explain_last_move', title: 'Explain the last move', description: 'Explains the most recent move on the shared board in plain language.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(describeMove(lastMove)) }))
   addTool(defineTool({ name: 'get_mentor_guidance', title: 'Ask the chess mentor', description: 'Returns the current Stockfish-grounded move grade, explanation, next plan, skill tier, and remembered learning themes.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult({ enabled: mentorEnabled, tier: inferMentorTier(progress.completedLessonIds.length), insight: mentorInsight, memory: progress.mentorMemory }) }))
-  addTool(defineTool({ name: 'set_mentor_enabled', title: 'Turn chess mentor on or off', description: 'Enables or disables visible coaching for the current or next computer game.', inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', description: 'True for a coached mentor game; false for a quick battle.' } }, required: ['enabled'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ enabled }) => {
+  addTool(defineTool({ name: 'set_mentor_enabled', title: 'Turn chess mentor on or off', description: 'Enables or disables quiet move analysis for the current or next computer game.', inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', description: 'True for on-demand guidance and a post-game review; false for a quick battle.' } }, required: ['enabled'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ enabled }) => {
     mentorEnabled = enabled
     syncProgression()
     updateStatus(enabled ? 'The mentor has joined the board.' : 'Mentor hidden. Pure battle mode.')
@@ -1152,12 +1198,17 @@ async function registerTools() {
     setCameraView(view)
     return textResult({ message: `Camera changed to ${view} view.` })
   } }))
-  addTool(defineTool({ name: 'start_ranked_game', title: 'Start a computer game', description: 'Starts or restarts a computer game with optional mentor coaching. The player may choose White or Black and an opponent difficulty.', inputSchema: { type: 'object', properties: { color: { type: 'string', enum: ['white', 'black'], description: 'Color the player wants to control.' }, level: { type: 'string', enum: ['apprentice', 'duelist', 'master'], description: 'Optional opponent strength.' }, coached: { type: 'boolean', description: 'True to receive adaptive mentor feedback after every turn.' } }, additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ color, level, coached }) => {
+  addTool(defineTool({ name: 'start_ranked_game', title: 'Start a computer game', description: 'Starts or restarts a computer game with optional quiet mentor analysis. The player may choose White or Black and an opponent difficulty. Opens the chosen path introduction once when needed.', inputSchema: { type: 'object', properties: { color: { type: 'string', enum: ['white', 'black'], description: 'Color the player wants to control.' }, level: { type: 'string', enum: ['apprentice', 'duelist', 'master'], description: 'Optional opponent strength.' }, coached: { type: 'boolean', description: 'True for on-demand guidance and a post-game review; false for an uninterrupted battle.' } }, additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ color, level, coached }) => {
     const chosenColor = color ?? playerColor
     if (chosenColor !== 'white' && chosenColor !== 'black') return textResult({ error: 'Color must be white or black.', state: gameState() })
     if (level && level !== 'apprentice' && level !== 'duelist' && level !== 'master') return textResult({ error: 'Difficulty must be apprentice, duelist, or master.', state: gameState() })
     if (level) difficulty = level
     if (typeof coached === 'boolean') mentorEnabled = coached
+    const path: OnboardingPath = mentorEnabled ? 'mentor' : 'battle'
+    if (!completedOnboarding.includes(path)) {
+      showOnboarding(path)
+      return textResult({ message: onboardingGuidance(), state: gameState() })
+    }
     document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
     setMode('ranked')
     const openingMove = await startGame(chosenColor)
@@ -1187,7 +1238,7 @@ async function executeGameTool(name: string, argumentsObject: Record<string, unk
 }
 
 function setupVoice() {
-  new VoiceController({
+  voiceController = new VoiceController({
     button: document.querySelector<HTMLButtonElement>('#voice-toggle')!,
     status: document.querySelector<HTMLElement>('#voice-status')!,
     transcript: document.querySelector<HTMLElement>('#voice-transcript')!,
