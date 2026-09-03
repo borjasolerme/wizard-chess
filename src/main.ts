@@ -102,6 +102,44 @@ for (let rank = 0; rank < 8; rank++) for (let file = 0; file < 8; file++) {
   squareMeshes.push(square)
 }
 
+const coordinateMaterials = new Map<string, THREE.SpriteMaterial>()
+function coordinateSprite(label: string) {
+  let material = coordinateMaterials.get(label)
+  if (!material) {
+    const labelCanvas = document.createElement('canvas')
+    labelCanvas.width = 128
+    labelCanvas.height = 128
+    const context = labelCanvas.getContext('2d')!
+    context.fillStyle = '#d8c393'
+    context.font = '600 64px Georgia'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(label, 64, 64)
+    const texture = new THREE.CanvasTexture(labelCanvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false, opacity: .88 })
+    coordinateMaterials.set(label, material)
+  }
+  const sprite = new THREE.Sprite(material)
+  sprite.scale.set(.34, .34, 1)
+  sprite.renderOrder = 2
+  return sprite
+}
+
+for (let index = 0; index < 8; index++) {
+  const file = index - 3.5
+  const rank = index - 3.5
+  for (const edge of [-4.15, 4.15]) {
+    const fileLabel = coordinateSprite('abcdefgh'[index])
+    fileLabel.position.set(file, .18, edge)
+    boardGroup.add(fileLabel)
+
+    const rankLabel = coordinateSprite(String(index + 1))
+    rankLabel.position.set(edge, .18, rank)
+    boardGroup.add(rankLabel)
+  }
+}
+
 const pieceGroup = new THREE.Group()
 boardGroup.add(pieceGroup)
 const pieceGeometry: Record<string, THREE.BufferGeometry> = {
