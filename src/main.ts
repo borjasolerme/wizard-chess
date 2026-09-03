@@ -10,6 +10,7 @@ import { curriculum, isExpectedLessonMove, isLessonUnlocked, lessonById, lessons
 import { parseProgress, recordGame, recordLesson, trophies, type GameHistory, type ProgressData } from './progress'
 import { assessMove, createPostGameReview, inferMentorTier, rememberInsight, type MentorInsight, type PostGameReview } from './mentor'
 import { completeOnboarding, onboardingSteps, parseCompletedOnboarding, type OnboardingPath } from './onboarding'
+import { GameSounds, moveSoundCue } from './sound'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -45,8 +46,11 @@ let currentGameInsights: MentorInsight[] = []
 let postGameReview: PostGameReview | null = null
 let turnBusy = false
 const stockfish = new StockfishEngine()
+const sounds = new GameSounds()
 const gameTools: WebMCP.ModelContextTool[] = []
 let voiceController: VoiceController | null = null
+
+window.addEventListener('pointerdown', () => sounds.unlock(), { capture: true, once: true })
 
 const icons = {
   microphone: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></svg>`,
@@ -440,6 +444,7 @@ function beginLesson(lesson: Lesson = currentLesson) {
   paused = false
   outcome = null
   loadLessonStep()
+  sounds.play('start')
 }
 function lessonAllowsMove(from: string, to: string, promotion = 'q') {
   return !lessonRunning || isExpectedLessonMove(currentLesson.steps[lessonStep], from, to, promotion)
@@ -464,6 +469,7 @@ function advanceLesson() {
   const nextUnlocked = lessons.find(lesson => !progress.completedLessonIds.includes(lesson.id) && isLessonUnlocked(lesson.id, progress.completedLessonIds))
   nextButton.hidden = !nextUnlocked
   updateStatus(`Lesson complete · ${currentLesson.title}`)
+  sounds.play('success')
 }
 function finishMove(move: Move) {
   lastMove = move
@@ -471,6 +477,7 @@ function finishMove(move: Move) {
   castMoveSpell(move)
   renderPosition()
   updateStatus(describeMove(lastMove))
+  sounds.play(moveSoundCue({ captured: Boolean(move.captured), inCheck: game.inCheck(), gameOver: game.isGameOver() }))
   if (game.isCheckmate() && lastMove.color === (playerColor === 'white' ? 'w' : 'b') && mode === 'ranked') {
     rankedWins += 1
     localStorage.setItem('wizard-chess-wins', String(rankedWins))
@@ -601,6 +608,7 @@ async function startGame(color: PlayerColor = playerColor) {
   setCameraView(playerColor)
   renderPosition()
   updateStatus(`New ranked game. You play ${playerColor}.`)
+  sounds.play('start')
   renderMentorInsight(null)
   return await maybeAiTurn()
 }
@@ -1085,6 +1093,7 @@ async function registerTools() {
     selected = null
     updateStatus(`Game over: ${playerColor} resigned.`)
     recordCurrentGame(`${playerColor === 'white' ? 'Black' : 'White'} won by resignation`)
+    sounds.play('complete')
     return textResult({ message: `You resigned as ${playerColor}.`, state: gameState() })
   } }))
   addTool(defineTool({ name: 'offer_draw', title: 'Offer a draw', description: 'Offers a draw to the local opponent. In this prototype the opponent accepts, ending the ranked game as a draw.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
@@ -1095,6 +1104,7 @@ async function registerTools() {
     selected = null
     updateStatus('Game over: draw by agreement.')
     recordCurrentGame('Draw by agreement')
+    sounds.play('complete')
     return textResult({ message: 'Draw offered and accepted by the local opponent.', state: gameState() })
   } }))
   addTool(defineTool({ name: 'save_game', title: 'Save the current game', description: 'Saves the current position and game settings under a spoken name in this browser.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Short name for the saved game.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
