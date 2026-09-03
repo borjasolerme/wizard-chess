@@ -7,5 +7,6 @@ describe('game progression', () => {
     expect(isGameActive('setup')).toBe(false)
     expect(isGameActive('active')).toBe(true)
     expect(isGameActive('complete')).toBe(false)
+    expect(isGameActive('replay')).toBe(false)
   })
 })

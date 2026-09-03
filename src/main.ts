@@ -6,21 +6,22 @@ import { StockfishEngine } from './stockfish'
 import { VoiceController, type VoiceTool } from './voice'
 import { normalizeOpenRouterKey, openRouterKeyStorageKey } from './api-key'
 import { isGameActive, type GamePhase } from './game-session'
-import { isExpectedLessonMove, pawnLesson } from './lesson'
+import { curriculum, isExpectedLessonMove, isLessonUnlocked, lessonById, lessons, nextLesson, pawnLesson, type Lesson } from './lesson'
+import { parseProgress, recordGame, recordLesson, trophies, type GameHistory, type ProgressData } from './progress'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
 type PlayerColor = 'white' | 'black'
 type CameraView = 'white' | 'black' | 'top' | 'cinematic'
 type ToolResult = { content: Array<{ type: 'text'; text: string }> }
-type SavedGame = { fen: string; history?: string[]; mode: Mode; difficulty: Difficulty; playerColor: PlayerColor; outcome: string | null; lessonStep?: number; savedAt: string }
+type SavedGame = { fen: string; history?: string[]; mode: Mode; difficulty: Difficulty; playerColor: PlayerColor; outcome: string | null; lessonId?: string; lessonStep?: number; savedAt: string }
 
-const lessons = [{ id: pawnLesson.id, title: pawnLesson.title, description: pawnLesson.description }]
 let game = new Chess()
 let mode: Mode = 'learn'
 let phase: GamePhase = 'entry'
 let lessonStep = 0
 let lessonRunning = false
+let currentLesson: Lesson = pawnLesson
 let difficulty: Difficulty = 'apprentice'
 let selected: Square | null = null
 let lastMove: Move | null = null
@@ -29,6 +30,10 @@ let playerColor: PlayerColor = 'white'
 let paused = false
 let outcome: string | null = null
 const savedGamesKey = 'wizard-chess-saved-games'
+const progressKey = 'wizard-chess-progress-v1'
+let progress: ProgressData = parseProgress(localStorage.getItem(progressKey))
+let gameHistoryRecorded = false
+let replay: { entry: GameHistory; index: number } | null = null
 const stockfish = new StockfishEngine()
 const gameTools: WebMCP.ModelContextTool[] = []
 
@@ -44,9 +49,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
 
       <section id="lesson" class="context-card lesson-card" hidden>
-        <span class="eyebrow">First lesson</span>
-        <h2>Pawn movement</h2>
-        <p>${lessons[0].description}</p>
+        <span id="lesson-position" class="eyebrow"></span>
+        <h2 id="lesson-title"></h2>
+        <p id="lesson-description"></p>
         <button id="start-lesson" class="primary-action">Begin lesson</button>
       </section>
 
@@ -59,11 +64,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </section>
 
       <section id="lesson-complete" class="context-card completion-card" hidden>
-        <span class="eyebrow">3 of 3</span>
+        <span id="completion-position" class="eyebrow"></span>
         <h2>Lesson complete</h2>
-        <p>You moved, captured, and promoted a pawn.</p>
-        <button id="repeat-lesson" class="primary-action">Practice again</button>
-        <button id="play-after-lesson" class="secondary-action">Play a game</button>
+        <p id="completion-message"></p>
+        <button id="next-lesson" class="primary-action">Next lesson</button>
+        <button id="repeat-lesson" class="secondary-action">Practice again</button>
+      </section>
+
+      <section id="replay-controls" class="context-card replay-card" hidden>
+        <span class="eyebrow">Game replay</span>
+        <h2 id="replay-title"></h2>
+        <p id="replay-status"></p>
+        <div class="replay-actions">
+          <button id="replay-previous" class="secondary-action">Previous</button>
+          <button id="replay-next" class="primary-action">Next</button>
+        </div>
+        <button id="exit-replay" class="replay-exit">Exit replay</button>
       </section>
 
       <section id="entry-screen" class="entry-screen">
@@ -87,6 +103,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <summary aria-label="More options">•••</summary>
         <div class="more-popover">
           <button id="restart-game" hidden>New game</button>
+          <button id="open-progress">Progress</button>
           <button id="open-settings">Settings</button>
           <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
         </div>
@@ -109,6 +126,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           </div>
           <a class="get-key" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">Get an OpenRouter key ↗</a>
         </form>
+      </dialog>
+
+      <dialog id="progress-dialog" class="progress-dialog" aria-labelledby="progress-title">
+        <div class="progress-heading">
+          <div><span class="eyebrow">Your journey</span><h2 id="progress-title">Progress</h2></div>
+          <button id="close-progress" class="close-settings" type="button" aria-label="Close progress">×</button>
+        </div>
+        <div class="progress-summary"><strong id="lesson-count"></strong><span>academy</span><strong id="win-count"></strong><span>victories</span></div>
+        <section><h3>Academy</h3><div id="academy-list" class="academy-list"></div></section>
+        <section><h3>Trophies</h3><div id="trophy-list" class="trophy-list"></div></section>
+        <section><h3>History</h3><div id="history-list" class="history-list"></div></section>
       </dialog>
     </section>
   </main>`
@@ -216,21 +244,50 @@ function describeMove(move: Move | null) {
 }
 function updateStatus(message?: string) {
   status.textContent = message ?? (game.isGameOver() ? `Game over: ${game.isCheckmate() ? 'checkmate' : 'draw'}.` : `${game.turn() === 'w' ? 'White' : 'Black'} to move.`)
-  status.parentElement?.toggleAttribute('data-alert', game.inCheck() || game.isGameOver() || outcome !== null)
+  status.parentElement?.toggleAttribute('data-alert', phase === 'complete' || (phase !== 'replay' && !lessonRunning && (game.inCheck() || game.isGameOver() || outcome !== null)))
 }
 function lessonInstruction() {
-  const step = pawnLesson.steps[lessonStep]
-  return `${lessonStep + 1} of ${pawnLesson.steps.length} · ${step.instruction}`
+  const step = currentLesson.steps[lessonStep]
+  return `${lessonStep + 1} of ${currentLesson.steps.length} · ${step.instruction}`
 }
 function loadLessonStep() {
-  game.load(pawnLesson.steps[lessonStep].fen)
+  game.load(currentLesson.steps[lessonStep].fen)
   selected = null
   lastMove = null
   renderPosition()
   updateStatus(lessonInstruction())
 }
-function beginPawnLesson() {
+function historyId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+function persistProgress() {
+  localStorage.setItem(progressKey, JSON.stringify(progress))
+}
+function recordCurrentGame(result: string) {
+  if (gameHistoryRecorded || mode !== 'ranked') return
+  progress = recordGame(progress, {
+    id: historyId('game'),
+    result,
+    difficulty,
+    playerColor,
+    moves: game.history(),
+    completedAt: new Date().toISOString(),
+  })
+  gameHistoryRecorded = true
+  persistProgress()
+}
+function renderLessonSetup(lesson = nextLesson(progress.completedLessonIds)) {
+  currentLesson = lesson
+  const index = lessons.findIndex(candidate => candidate.id === lesson.id)
+  document.querySelector('#lesson-position')!.textContent = `Lesson ${index + 1} of ${lessons.length}`
+  document.querySelector('#lesson-title')!.textContent = lesson.title
+  document.querySelector('#lesson-description')!.textContent = lesson.description
+  document.querySelector('#start-lesson')!.textContent = progress.completedLessonIds.includes(lesson.id) ? 'Practice lesson' : 'Begin lesson'
+}
+function beginLesson(lesson: Lesson = currentLesson) {
+  if (!isLessonUnlocked(lesson.id, progress.completedLessonIds)) return
   setMode('learn')
+  currentLesson = lesson
   lessonStep = 0
   lessonRunning = true
   phase = 'active'
@@ -241,19 +298,28 @@ function beginPawnLesson() {
   loadLessonStep()
 }
 function lessonAllowsMove(from: string, to: string, promotion = 'q') {
-  return !lessonRunning || isExpectedLessonMove(pawnLesson.steps[lessonStep], from, to, promotion)
+  return !lessonRunning || isExpectedLessonMove(currentLesson.steps[lessonStep], from, to, promotion)
 }
 function advanceLesson() {
-  if (lessonStep < pawnLesson.steps.length - 1) {
+  if (lessonStep < currentLesson.steps.length - 1) {
     lessonStep += 1
     loadLessonStep()
     return
   }
+  const firstCompletion = !progress.completedLessonIds.includes(currentLesson.id)
+  progress = recordLesson(progress, currentLesson, historyId('lesson'), new Date().toISOString())
+  persistProgress()
   phase = 'complete'
   selected = null
   syncProgression()
   document.querySelector('.shell')!.classList.remove('lesson-active')
-  updateStatus('Lesson complete · Pawn movement')
+  const lessonIndex = lessons.findIndex(lesson => lesson.id === currentLesson.id)
+  document.querySelector('#completion-position')!.textContent = `Lesson ${lessonIndex + 1} of ${lessons.length}`
+  document.querySelector('#completion-message')!.textContent = firstCompletion ? `Trophy earned: ${currentLesson.trophy}.` : `${currentLesson.title} completed again.`
+  const nextButton = document.querySelector<HTMLButtonElement>('#next-lesson')!
+  const nextUnlocked = lessons.find(lesson => !progress.completedLessonIds.includes(lesson.id) && isLessonUnlocked(lesson.id, progress.completedLessonIds))
+  nextButton.hidden = !nextUnlocked
+  updateStatus(`Lesson complete · ${currentLesson.title}`)
 }
 function finishMove(move: Move) {
   lastMove = move
@@ -264,6 +330,10 @@ function finishMove(move: Move) {
     rankedWins += 1
     localStorage.setItem('wizard-chess-wins', String(rankedWins))
     document.querySelector('#wins')!.textContent = String(rankedWins)
+  }
+  if (mode === 'ranked' && game.isGameOver()) {
+    const winner = game.isCheckmate() ? (lastMove.color === 'w' ? 'White' : 'Black') : null
+    recordCurrentGame(winner ? `${winner} won by checkmate` : 'Draw')
   }
   return lastMove
 }
@@ -312,6 +382,8 @@ async function maybeAiTurn() {
 async function startGame(color: PlayerColor = playerColor) {
   playerColor = color
   lessonRunning = false
+  gameHistoryRecorded = false
+  replay = null
   paused = false
   outcome = null
   game.reset()
@@ -330,7 +402,7 @@ const pointer = new THREE.Vector2()
 canvas.addEventListener('click', event => {
   if (!isGameActive(phase)) return
   const humanTurn = mode === 'learn' ? game.turn() : playerColor === 'white' ? 'w' : 'b'
-  if (game.turn() !== humanTurn || game.isGameOver() || paused || outcome) return
+  if (game.turn() !== humanTurn || (!lessonRunning && game.isGameOver()) || paused || outcome) return
   const rect = canvas.getBoundingClientRect()
   pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
   raycaster.setFromCamera(pointer, camera)
@@ -342,7 +414,7 @@ canvas.addEventListener('click', event => {
   else if (selected) {
     if (piece?.color === humanTurn) selected = square
     else if (playMove(selected, square)) void maybeAiTurn()
-    else updateStatus(lessonRunning ? `Try this: ${pawnLesson.steps[lessonStep].instruction}` : 'That move is not legal. Choose again.')
+    else updateStatus(lessonRunning ? `Try this: ${currentLesson.steps[lessonStep].instruction}` : 'That move is not legal. Choose again.')
   }
   renderPosition()
 })
@@ -351,9 +423,12 @@ document.querySelector('#learn')!.addEventListener('click', () => setMode('learn
 document.querySelector('#ranked')!.addEventListener('click', () => setMode('ranked'))
 document.querySelector('#choose-learn')!.addEventListener('click', () => setMode('learn'))
 document.querySelector('#choose-play')!.addEventListener('click', () => setMode('ranked'))
-document.querySelector('#start-lesson')!.addEventListener('click', beginPawnLesson)
-document.querySelector('#repeat-lesson')!.addEventListener('click', beginPawnLesson)
-document.querySelector('#play-after-lesson')!.addEventListener('click', () => setMode('ranked'))
+document.querySelector('#start-lesson')!.addEventListener('click', () => beginLesson())
+document.querySelector('#repeat-lesson')!.addEventListener('click', () => beginLesson(currentLesson))
+document.querySelector('#next-lesson')!.addEventListener('click', () => {
+  const lesson = lessons.find(candidate => !progress.completedLessonIds.includes(candidate.id) && isLessonUnlocked(candidate.id, progress.completedLessonIds))
+  if (lesson) beginLesson(lesson)
+})
 document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector('#restart-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector<HTMLSelectElement>('#difficulty')!.addEventListener('change', event => { difficulty = (event.target as HTMLSelectElement).value as Difficulty; updateStatus(`Difficulty set to ${difficulty}.`) })
@@ -364,6 +439,7 @@ const keyInput = document.querySelector<HTMLInputElement>('#openrouter-key')!
 const keyState = document.querySelector<HTMLElement>('#key-state')!
 const settingsStatus = document.querySelector<HTMLElement>('#settings-status')!
 const removeKeyButton = document.querySelector<HTMLButtonElement>('#remove-key')!
+const progressDialog = document.querySelector<HTMLDialogElement>('#progress-dialog')!
 
 function openRouterKey() { return localStorage.getItem(openRouterKeyStorageKey) ?? '' }
 function renderKeyState() {
@@ -399,21 +475,157 @@ removeKeyButton.addEventListener('click', () => {
   renderKeyState()
 })
 
+function actionButton(label: string, action: () => void, disabled = false) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.textContent = label
+  button.disabled = disabled
+  if (!disabled) button.addEventListener('click', action)
+  return button
+}
+function renderProgress() {
+  document.querySelector('#lesson-count')!.textContent = `${progress.completedLessonIds.length}/${lessons.length}`
+  document.querySelector('#win-count')!.textContent = String(rankedWins)
+  const academyList = document.querySelector<HTMLElement>('#academy-list')!
+  academyList.replaceChildren()
+  for (const level of curriculum) {
+    const levelElement = document.createElement('div')
+    levelElement.className = 'academy-level'
+    const heading = document.createElement('div')
+    heading.className = 'level-heading'
+    const title = document.createElement('strong')
+    title.textContent = level.title
+    const description = document.createElement('span')
+    description.textContent = level.description
+    heading.append(title, description)
+    levelElement.append(heading)
+    for (const lesson of level.lessons) {
+      const completed = progress.completedLessonIds.includes(lesson.id)
+      const unlocked = isLessonUnlocked(lesson.id, progress.completedLessonIds)
+      const row = document.createElement('div')
+      row.className = 'lesson-row'
+      row.dataset.locked = String(!unlocked)
+      const copy = document.createElement('div')
+      const lessonTitle = document.createElement('strong')
+      lessonTitle.textContent = lesson.title
+      const lessonMeta = document.createElement('span')
+      lessonMeta.textContent = completed ? `Trophy: ${lesson.trophy}` : lesson.description
+      copy.append(lessonTitle, lessonMeta)
+      const button = actionButton(unlocked ? (completed ? 'Replay' : 'Start') : 'Locked', () => {
+        progressDialog.close()
+        beginLesson(lesson)
+      }, !unlocked)
+      row.append(copy, button)
+      levelElement.append(row)
+    }
+    academyList.append(levelElement)
+  }
+
+  const trophyList = document.querySelector<HTMLElement>('#trophy-list')!
+  trophyList.replaceChildren(...trophies(progress, rankedWins).map(trophy => {
+    const item = document.createElement('div')
+    item.className = 'trophy'
+    item.dataset.earned = String(trophy.earned)
+    const mark = document.createElement('span')
+    mark.textContent = trophy.earned ? '◆' : '◇'
+    const copy = document.createElement('div')
+    const title = document.createElement('strong')
+    title.textContent = trophy.title
+    const description = document.createElement('span')
+    description.textContent = trophy.description
+    copy.append(title, description)
+    item.append(mark, copy)
+    return item
+  }))
+
+  const historyList = document.querySelector<HTMLElement>('#history-list')!
+  historyList.replaceChildren()
+  if (!progress.history.length) {
+    const empty = document.createElement('p')
+    empty.className = 'empty-history'
+    empty.textContent = 'Completed lessons and games will appear here.'
+    historyList.append(empty)
+  } else for (const entry of progress.history) {
+    const row = document.createElement('div')
+    row.className = 'history-row'
+    const copy = document.createElement('div')
+    const title = document.createElement('strong')
+    title.textContent = entry.type === 'lesson' ? entry.title : entry.result
+    const meta = document.createElement('span')
+    meta.textContent = `${entry.type === 'lesson' ? 'Lesson' : `${entry.difficulty} · ${entry.moves.length} moves`} · ${new Date(entry.completedAt).toLocaleDateString()}`
+    copy.append(title, meta)
+    row.append(copy, actionButton('Replay', () => {
+      progressDialog.close()
+      if (entry.type === 'lesson') {
+        const lesson = lessonById(entry.lessonId)
+        if (lesson) beginLesson(lesson)
+      } else startReplay(entry)
+    }))
+    historyList.append(row)
+  }
+}
+
+function renderReplay() {
+  if (!replay) return
+  game.reset()
+  for (const move of replay.entry.moves.slice(0, replay.index)) game.move(move)
+  restoreLastMove()
+  renderPosition()
+  document.querySelector('#replay-title')!.textContent = replay.entry.result
+  document.querySelector('#replay-status')!.textContent = replay.index === 0 ? `Start position · ${replay.entry.moves.length} moves` : `${replay.index} of ${replay.entry.moves.length} · ${replay.entry.moves[replay.index - 1]}`
+  document.querySelector<HTMLButtonElement>('#replay-previous')!.disabled = replay.index === 0
+  document.querySelector<HTMLButtonElement>('#replay-next')!.disabled = replay.index === replay.entry.moves.length
+  updateStatus(`Replay · ${replay.index} of ${replay.entry.moves.length}`)
+}
+function startReplay(entry: GameHistory) {
+  replay = { entry, index: 0 }
+  mode = 'ranked'
+  phase = 'replay'
+  lessonRunning = false
+  paused = false
+  outcome = null
+  document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
+  document.querySelector<HTMLElement>('#lesson')!.hidden = true
+  document.querySelector<HTMLElement>('#ranked-setup')!.hidden = true
+  document.querySelector('#learn')!.classList.remove('active')
+  document.querySelector('#ranked')!.classList.add('active')
+  syncProgression()
+  renderReplay()
+}
+function stepReplay(change: number) {
+  if (!replay) return
+  replay.index = Math.min(Math.max(replay.index + change, 0), replay.entry.moves.length)
+  renderReplay()
+}
+
+document.querySelector('#open-progress')!.addEventListener('click', () => {
+  document.querySelector('.more-menu')!.removeAttribute('open')
+  renderProgress()
+  progressDialog.showModal()
+})
+document.querySelector('#close-progress')!.addEventListener('click', () => progressDialog.close())
+document.querySelector('#replay-previous')!.addEventListener('click', () => stepReplay(-1))
+document.querySelector('#replay-next')!.addEventListener('click', () => stepReplay(1))
+document.querySelector('#exit-replay')!.addEventListener('click', () => { replay = null; setMode('ranked') })
+
 function syncProgression() {
   const active = isGameActive(phase)
   const shell = document.querySelector<HTMLElement>('.shell')!
   shell.classList.toggle('awaiting-choice', phase === 'entry')
   shell.classList.toggle('setting-up', phase === 'setup')
   shell.classList.toggle('lesson-finished', phase === 'complete')
+  shell.classList.toggle('replaying', phase === 'replay')
   canvas.setAttribute('aria-disabled', String(!active))
   controls.enabled = active
   document.querySelector<HTMLButtonElement>('#restart-game')!.hidden = !active || mode !== 'ranked'
   document.querySelector<HTMLElement>('#lesson-complete')!.hidden = phase !== 'complete'
+  document.querySelector<HTMLElement>('#replay-controls')!.hidden = phase !== 'replay'
 }
 
 function setMode(next: Mode) {
   mode = next
   lessonRunning = false
+  replay = null
   phase = 'setup'
   syncProgression()
   document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
@@ -422,6 +634,7 @@ function setMode(next: Mode) {
   document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
   document.querySelector<HTMLElement>('#ranked-setup')!.hidden = next !== 'ranked'
+  if (next === 'learn') renderLessonSetup()
   updateStatus(next === 'learn' ? 'Choose a lesson' : 'Choose an opponent')
 }
 
@@ -435,17 +648,38 @@ function gameState() {
     outcome,
     fen: game.fen(),
     sideToMove: game.turn() === 'w' ? 'white' : 'black',
-    gameOver: game.isGameOver() || outcome !== null,
+    gameOver: phase === 'complete' || (phase !== 'replay' && !lessonRunning && (game.isGameOver() || outcome !== null)),
     check: game.inCheck(),
     lastMove: lastMove ? { san: lastMove.san, from: lastMove.from, to: lastMove.to } : null,
     lesson: lessonRunning && phase !== 'entry' && phase !== 'setup' ? {
+      lessonId: currentLesson.id,
       step: lessonStep + 1,
-      totalSteps: pawnLesson.steps.length,
-      title: pawnLesson.steps[lessonStep].title,
-      instruction: phase === 'complete' ? 'Lesson complete.' : pawnLesson.steps[lessonStep].instruction,
+      totalSteps: currentLesson.steps.length,
+      title: currentLesson.steps[lessonStep].title,
+      instruction: phase === 'complete' ? 'Lesson complete.' : currentLesson.steps[lessonStep].instruction,
     } : null,
-    legalMoves: phase === 'complete' ? [] : lessonRunning && phase === 'active' ? pawnLesson.steps[lessonStep].moves : game.moves(),
+    replay: replay ? { historyId: replay.entry.id, move: replay.index, totalMoves: replay.entry.moves.length } : null,
+    legalMoves: phase === 'complete' || phase === 'replay' ? [] : lessonRunning && phase === 'active' ? currentLesson.steps[lessonStep].moves : game.moves(),
     localVictories: rankedWins,
+  }
+}
+
+function progressSnapshot() {
+  return {
+    completedLessons: progress.completedLessonIds.length,
+    totalLessons: lessons.length,
+    rankedWins,
+    levels: curriculum.map(level => ({
+      id: level.id,
+      title: level.title,
+      lessons: level.lessons.map(lesson => ({
+        id: lesson.id,
+        title: lesson.title,
+        unlocked: isLessonUnlocked(lesson.id, progress.completedLessonIds),
+        completed: progress.completedLessonIds.includes(lesson.id),
+      })),
+    })),
+    trophies: trophies(progress, rankedWins),
   }
 }
 
@@ -480,8 +714,8 @@ function defineTool<const Schema extends object>(tool: WebMCP.ModelContextToolFr
 async function registerTools() {
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
-  addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
-  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its first exercise on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); beginPawnLesson(); return textResult({ message: pawnLesson.steps[0].instruction, state: gameState() }) } }))
+  addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists the academy levels, lessons, unlock state, and completion state.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(curriculum.map(level => ({ ...level, lessons: level.lessons.map(lesson => ({ id: lesson.id, title: lesson.title, description: lesson.description, trophy: lesson.trophy, unlocked: isLessonUnlocked(lesson.id, progress.completedLessonIds), completed: progress.completedLessonIds.includes(lesson.id) })) }))) }))
+  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts any unlocked academy lesson and loads its first exercise on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics', 'knight-jumps', 'bishop-lines', 'knight-fork', 'castle-safely', 'mate-in-one'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { const lesson = lessonById(lesson_id); if (!lesson) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(candidate => candidate.id) }); if (!isLessonUnlocked(lesson.id, progress.completedLessonIds)) return textResult({ error: 'Complete the previous lesson to unlock this one.', state: gameState() }); beginLesson(lesson); return textResult({ message: lesson.steps[0].instruction, state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
       if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game before making a move.', state: gameState() })
       if (paused) return textResult({ error: 'The game is paused. Resume it before moving.', state: gameState() })
@@ -491,7 +725,7 @@ async function registerTools() {
       const normalized = notation.trim()
       const uci = normalized.toLowerCase().match(/^([a-h][1-8])([a-h][1-8])([qrbn])?$/)
       const move = uci ? playMove(uci[1], uci[2], uci[3] ?? 'q') : playSanMove(normalized)
-      if (!move) return textResult({ error: lessonRunning ? `Try this: ${pawnLesson.steps[lessonStep].instruction}` : `"${notation}" is not legal in the current position.`, state: gameState() })
+      if (!move) return textResult({ error: lessonRunning ? `Try this: ${currentLesson.steps[lessonStep].instruction}` : `"${notation}" is not legal in the current position.`, state: gameState() })
       const opponentMove = await maybeAiTurn()
       return textResult({ played: move.san, opponentReply: opponentMove?.san ?? null, state: gameState() })
     } }))
@@ -531,6 +765,7 @@ async function registerTools() {
     outcome = `${playerColor} resigned`
     selected = null
     updateStatus(`Game over: ${playerColor} resigned.`)
+    recordCurrentGame(`${playerColor === 'white' ? 'Black' : 'White'} won by resignation`)
     return textResult({ message: `You resigned as ${playerColor}.`, state: gameState() })
   } }))
   addTool(defineTool({ name: 'offer_draw', title: 'Offer a draw', description: 'Offers a draw to the local opponent. In this prototype the opponent accepts, ending the ranked game as a draw.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
@@ -540,6 +775,7 @@ async function registerTools() {
     outcome = 'draw by agreement'
     selected = null
     updateStatus('Game over: draw by agreement.')
+    recordCurrentGame('Draw by agreement')
     return textResult({ message: 'Draw offered and accepted by the local opponent.', state: gameState() })
   } }))
   addTool(defineTool({ name: 'save_game', title: 'Save the current game', description: 'Saves the current position and game settings under a spoken name in this browser.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Short name for the saved game.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
@@ -547,7 +783,7 @@ async function registerTools() {
     const normalizedName = name.trim()
     if (!normalizedName || normalizedName.length > 40) return textResult({ error: 'Save name must contain 1 to 40 characters.' })
     const savedGames = readSavedGames()
-    savedGames[normalizedName] = { fen: game.fen(), history: game.history(), mode, difficulty, playerColor, outcome, lessonStep: lessonRunning ? lessonStep : undefined, savedAt: new Date().toISOString() }
+    savedGames[normalizedName] = { fen: game.fen(), history: game.history(), mode, difficulty, playerColor, outcome, lessonId: lessonRunning ? currentLesson.id : undefined, lessonStep: lessonRunning ? lessonStep : undefined, savedAt: new Date().toISOString() }
     writeSavedGames(savedGames)
     updateStatus(`Game saved as ${normalizedName}.`)
     return textResult({ message: `Game saved as ${normalizedName}.`, save: savedGames[normalizedName] })
@@ -573,8 +809,10 @@ async function registerTools() {
     restoreLastMove()
     document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
     setMode(mode)
-    lessonRunning = mode === 'learn' && Number.isInteger(saved.lessonStep)
-    lessonStep = lessonRunning ? Math.min(Math.max(saved.lessonStep ?? 0, 0), pawnLesson.steps.length - 1) : 0
+    const savedLesson = saved.lessonId ? lessonById(saved.lessonId) : undefined
+    lessonRunning = mode === 'learn' && Boolean(savedLesson) && Number.isInteger(saved.lessonStep)
+    currentLesson = savedLesson ?? pawnLesson
+    lessonStep = lessonRunning ? Math.min(Math.max(saved.lessonStep ?? 0, 0), currentLesson.steps.length - 1) : 0
     phase = 'active'
     syncProgression()
     if (mode === 'ranked') document.querySelector('.shell')!.classList.add('playing')
@@ -604,6 +842,31 @@ async function registerTools() {
     renderPosition()
     updateStatus('Custom position loaded for analysis.')
     return textResult({ message: 'Custom position loaded.', state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'get_progress', title: 'View academy progress and trophies', description: 'Returns every level and lesson with unlock and completion status, plus earned trophies and ranked victories.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(progressSnapshot()) }))
+  addTool(defineTool({ name: 'list_history', title: 'List lesson and game history', description: 'Lists completed lessons and ranked games. Game entries include their moves and history ID for replay.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(progress.history) }))
+  addTool(defineTool({ name: 'start_replay', title: 'Replay a lesson or game', description: 'Restarts a completed lesson or opens a completed ranked game at its starting position.', inputSchema: { type: 'object', properties: { history_id: { type: 'string', minLength: 1, description: 'History ID returned by list_history.' } }, required: ['history_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ history_id }) => {
+    const entry = progress.history.find(candidate => candidate.id === history_id)
+    if (!entry) return textResult({ error: 'History entry not found.', availableHistoryIds: progress.history.map(candidate => candidate.id) })
+    if (entry.type === 'lesson') {
+      const lesson = lessonById(entry.lessonId)
+      if (!lesson) return textResult({ error: 'That lesson no longer exists.' })
+      beginLesson(lesson)
+      return textResult({ message: `${lesson.title} restarted.`, state: gameState() })
+    }
+    startReplay(entry)
+    return textResult({ message: 'Game replay opened at the starting position.', state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'step_replay', title: 'Step through a game replay', description: 'Moves one step forward or backward through the open game replay.', inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['next', 'previous'], description: 'Replay direction.' } }, required: ['direction'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ direction }) => {
+    if (!replay || phase !== 'replay') return textResult({ error: 'Open a game replay first.' })
+    stepReplay(direction === 'next' ? 1 : -1)
+    return textResult({ message: `Replay moved ${direction}.`, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'exit_replay', title: 'Exit game replay', description: 'Closes the current replay and returns to ranked-game setup.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (!replay || phase !== 'replay') return textResult({ error: 'No replay is open.' })
+    replay = null
+    setMode('ranked')
+    return textResult({ message: 'Replay closed.', state: gameState() })
   } }))
   addTool(defineTool({ name: 'set_camera_view', title: 'Change the board camera', description: 'Changes the visible 3D board camera to the White side, Black side, top-down, or cinematic view.', inputSchema: { type: 'object', properties: { view: { type: 'string', enum: ['white', 'black', 'top', 'cinematic'], description: 'Desired board viewpoint.' } }, required: ['view'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ view }) => {
     if (view !== 'white' && view !== 'black' && view !== 'top' && view !== 'cinematic') return textResult({ error: 'Camera view must be white, black, top, or cinematic.' })
