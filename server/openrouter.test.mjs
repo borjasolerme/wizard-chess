@@ -74,8 +74,8 @@ describe('voice understanding', () => {
       }) } }],
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
-    const tools = Array.from({ length: 34 }, (_, index) => ({
-      name: index === 33 ? 'open_settings' : `tool_${index}`,
+    const tools = Array.from({ length: 36 }, (_, index) => ({
+      name: index === 35 ? 'open_settings' : `tool_${index}`,
       description: 'Available action.',
       inputSchema: { type: 'object', properties: {} },
     }))
@@ -84,7 +84,7 @@ describe('voice understanding', () => {
 
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
     const context = JSON.parse(request.messages[1].content[0].text)
-    expect(context.availableWebMcpTools).toHaveLength(34)
+    expect(context.availableWebMcpTools).toHaveLength(36)
     expect(request.messages[0].content).toContain('interface navigation')
   })
 })

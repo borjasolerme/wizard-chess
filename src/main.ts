@@ -818,6 +818,22 @@ function renderKeyState() {
   keyState.dataset.saved = String(saved)
   removeKeyButton.hidden = !saved
 }
+function saveOpenRouterKey(value: string) {
+  const key = normalizeOpenRouterKey(value)
+  if (!key) return false
+  localStorage.setItem(openRouterKeyStorageKey, key)
+  keyInput.value = key
+  settingsStatus.textContent = 'Saved. Voice is ready.'
+  renderKeyState()
+  void voiceController?.start()
+  return true
+}
+function removeOpenRouterKey() {
+  localStorage.removeItem(openRouterKeyStorageKey)
+  keyInput.value = ''
+  settingsStatus.textContent = 'Key removed.'
+  renderKeyState()
+}
 document.querySelector('#open-settings')!.addEventListener('click', openSettings)
 document.querySelector('#close-settings')!.addEventListener('click', () => settingsDialog.close())
 document.querySelector('#open-main-menu')!.addEventListener('click', () => {
@@ -832,22 +848,11 @@ mainMenuForm.addEventListener('submit', event => {
 })
 settingsForm.addEventListener('submit', event => {
   event.preventDefault()
-  const key = normalizeOpenRouterKey(keyInput.value)
-  if (!key) {
+  if (!saveOpenRouterKey(keyInput.value)) {
     settingsStatus.textContent = 'Enter a valid OpenRouter key.'
-    return
   }
-  localStorage.setItem(openRouterKeyStorageKey, key)
-  keyInput.value = key
-  settingsStatus.textContent = 'Saved. Voice is ready.'
-  renderKeyState()
 })
-removeKeyButton.addEventListener('click', () => {
-  localStorage.removeItem(openRouterKeyStorageKey)
-  keyInput.value = ''
-  settingsStatus.textContent = 'Key removed.'
-  renderKeyState()
-})
+removeKeyButton.addEventListener('click', removeOpenRouterKey)
 
 function actionButton(label: string, action: () => void, disabled = false) {
   const button = document.createElement('button')
@@ -1150,6 +1155,14 @@ async function registerTools() {
     openSettings()
     return textResult({ message: 'Settings opened.', apiKeyConfigured: Boolean(openRouterKey()), state: gameState() })
   } }))
+  addTool(defineTool({ name: 'save_openrouter_key', title: 'Save an OpenRouter key', description: 'Saves an OpenRouter API key in this browser so voice control can start. This is for a trusted WebMCP client; never request or repeat the key aloud.', inputSchema: { type: 'object', properties: { api_key: { type: 'string', minLength: 10, maxLength: 512, description: 'The complete OpenRouter API key supplied privately by the player.' } }, required: ['api_key'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ api_key }) => {
+    if (!saveOpenRouterKey(api_key)) return textResult({ error: 'Enter a valid OpenRouter key containing 10 to 512 characters.' })
+    return textResult({ message: 'OpenRouter key saved in this browser. Voice is starting.', apiKeyConfigured: true })
+  } }))
+  addTool(defineTool({ name: 'remove_openrouter_key', title: 'Remove the OpenRouter key', description: 'Removes the player’s saved OpenRouter API key from this browser.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    removeOpenRouterKey()
+    return textResult({ message: 'OpenRouter key removed from this browser.', apiKeyConfigured: false })
+  } }))
   addTool(defineTool({ name: 'open_progress', title: 'Open progress', description: 'Opens the visible Progress dialog with Elo rating, academy lessons, trophies, and game history. Use when the player says show or open progress.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
     openProgress()
     return textResult({ message: 'Progress opened.', progress: progressSnapshot(), state: gameState() })
@@ -1399,7 +1412,9 @@ async function registerTools() {
 }
 
 function voiceToolDefinitions(): VoiceTool[] {
-  return gameTools.map(({ name, title, description, inputSchema }) => ({ name, title, description, inputSchema }))
+  return gameTools
+    .filter(({ name }) => name !== 'save_openrouter_key')
+    .map(({ name, title, description, inputSchema }) => ({ name, title, description, inputSchema }))
 }
 
 async function executeGameTool(name: string, argumentsObject: Record<string, unknown>) {
@@ -1418,6 +1433,7 @@ function setupVoice() {
     getApiKey: openRouterKey,
     executeTool: executeGameTool,
   })
+  void voiceController.start()
 }
 
 function resize() {

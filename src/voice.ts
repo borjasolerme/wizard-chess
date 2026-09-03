@@ -43,6 +43,7 @@ async function postJson<T>(body: Record<string, unknown>, apiKey: string): Promi
 
 export class VoiceController {
   private enabled = false
+  private starting = false
   private cancelled = false
   private recorder: MediaRecorder | null = null
   private audio: HTMLAudioElement | null = null
@@ -75,24 +76,34 @@ export class VoiceController {
       this.renderButton()
       return
     }
+    await this.start()
+  }
+
+  async start() {
+    if (this.enabled || this.starting) return
+    this.starting = true
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       this.setStatus('This browser cannot record microphone audio.')
+      this.starting = false
       return
     }
     try {
       const { configured } = await postJson<{ configured: boolean }>({ action: 'status' }, this.options.getApiKey())
       if (!configured) {
         this.setStatus('Add an OpenRouter key in Settings.')
+        this.starting = false
         return
       }
     } catch (error) {
       this.setStatus(error instanceof Error ? error.message : String(error))
+      this.starting = false
       return
     }
     this.enabled = true
     this.cancelled = false
     this.renderButton()
     await this.runLoop()
+    this.starting = false
   }
 
   async narrate(text: string, language = 'en') {
