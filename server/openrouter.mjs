@@ -109,6 +109,29 @@ export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY)
     return { status: 200, json: result }
   }
 
+  if (body.action === 'coach') {
+    const context = {
+      tier: ['beginner', 'intermediate', 'advanced'].includes(body.tier) ? body.tier : 'beginner',
+      insight: body.insight && typeof body.insight === 'object' ? body.insight : {},
+      opponentMove: String(body.opponentMove || '').slice(0, 20),
+      nextMove: String(body.nextMove || '').slice(0, 20),
+      rememberedConcepts: Array.isArray(body.memory?.concepts) ? body.memory.concepts.slice(-8) : [],
+      rememberedMistakes: Array.isArray(body.memory?.mistakes) ? body.memory.mistakes.slice(-8) : [],
+    }
+    const result = await chatJson(apiKey, [
+      {
+        role: 'system',
+        content: 'You are a warm, concise chess mentor in a magical chess game. Use only the supplied Stockfish evidence. Never invent a move. Beginner language avoids notation jargon. Return a short grade headline, one explanation sentence, and one next-plan sentence. Each field must be under 24 words.',
+      },
+      { role: 'user', content: JSON.stringify(context) },
+    ], languageSchema({
+      headline: { type: 'string' },
+      explanation: { type: 'string' },
+      plan: { type: 'string' },
+    }))
+    return { status: 200, json: result }
+  }
+
   if (body.action === 'speak') {
     const text = String(body.text || '').trim().slice(0, 600)
     const language = Object.hasOwn(voices, body.language) ? body.language : 'en'

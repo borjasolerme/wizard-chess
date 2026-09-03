@@ -1,4 +1,5 @@
 import { lessons, type Lesson } from './lesson'
+import type { MentorMemory, PostGameReview } from './mentor'
 
 export type LessonHistory = {
   id: string
@@ -16,15 +17,17 @@ export type GameHistory = {
   difficulty: string
   playerColor: 'white' | 'black'
   moves: string[]
+  coached?: boolean
+  review?: PostGameReview
   completedAt: string
 }
 
 export type HistoryEntry = LessonHistory | GameHistory
-export type ProgressData = { completedLessonIds: string[]; history: HistoryEntry[] }
+export type ProgressData = { completedLessonIds: string[]; history: HistoryEntry[]; mentorMemory: MentorMemory }
 export type Trophy = { id: string; title: string; description: string; earned: boolean }
 
 export function emptyProgress(): ProgressData {
-  return { completedLessonIds: [], history: [] }
+  return { completedLessonIds: [], history: [], mentorMemory: { concepts: [], strengths: [], mistakes: [] } }
 }
 
 export function recordLesson(progress: ProgressData, lesson: Lesson, id: string, completedAt: string): ProgressData {
@@ -32,7 +35,7 @@ export function recordLesson(progress: ProgressData, lesson: Lesson, id: string,
     ? progress.completedLessonIds
     : [...progress.completedLessonIds, lesson.id]
   const entry: LessonHistory = { id, type: 'lesson', lessonId: lesson.id, title: lesson.title, trophy: lesson.trophy, completedAt }
-  return { completedLessonIds, history: [entry, ...progress.history].slice(0, 50) }
+  return { ...progress, completedLessonIds, history: [entry, ...progress.history].slice(0, 50) }
 }
 
 export function recordGame(progress: ProgressData, game: Omit<GameHistory, 'type'>): ProgressData {
@@ -60,6 +63,11 @@ export function parseProgress(value: string | null): ProgressData {
     return {
       completedLessonIds: Array.isArray(parsed.completedLessonIds) ? parsed.completedLessonIds.filter(id => typeof id === 'string') : [],
       history: Array.isArray(parsed.history) ? parsed.history.filter(entry => entry && typeof entry === 'object').slice(0, 50) as HistoryEntry[] : [],
+      mentorMemory: parsed.mentorMemory && typeof parsed.mentorMemory === 'object' ? {
+        concepts: Array.isArray(parsed.mentorMemory.concepts) ? parsed.mentorMemory.concepts.filter(item => typeof item === 'string').slice(-8) : [],
+        strengths: Array.isArray(parsed.mentorMemory.strengths) ? parsed.mentorMemory.strengths.filter(item => typeof item === 'string').slice(-8) : [],
+        mistakes: Array.isArray(parsed.mentorMemory.mistakes) ? parsed.mentorMemory.mistakes.filter(item => typeof item === 'string').slice(-8) : [],
+      } : { concepts: [], strengths: [], mistakes: [] },
     }
   } catch { return emptyProgress() }
 }
