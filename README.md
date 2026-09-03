@@ -2,7 +2,7 @@
 
 A 3D chess game controlled by voice, mouse, touch, or a WebMCP agent. The player and agent read and change the same board.
 
-Choose Academy to learn the rules, Mentor game to get advice while playing, or Battle to face Stockfish. Wizard Chess registers 29 WebMCP tools for moves, lessons, coaching, game controls, saves, history, and camera views.
+Choose Academy to learn the rules, Mentor game to get advice while playing, or Battle to face Stockfish. Wizard Chess registers 30 WebMCP tools for moves, lessons, coaching, game controls, saves, history, and camera views.
 
 Built for the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/) on [Devpost](https://webmcp.devpost.com/).
 
@@ -38,7 +38,7 @@ Mouse or touch ─────────────────────�
 
 There are three ways into one game state:
 
-1. **A browser agent** discovers 29 tools registered with `document.modelContext.registerTool()`.
+1. **A browser agent** discovers 30 tools registered with `document.modelContext.registerTool()`.
 2. **Built-in voice** records a request, sends it to the local `/api/voice` endpoint, and lets Gemini choose from the same tool definitions. The selected handler runs locally, then Kokoro speaks the response.
 3. **Mouse or touch** calls those same game actions from the visible interface.
 
@@ -121,15 +121,16 @@ If WebMCP is unavailable, the visual game remains playable through mouse, touch,
 
 ## WebMCP tool surface
 
-All 29 tools have JSON input schemas, focused descriptions, and read-only hints where appropriate. They call the same actions as the visible interface.
+All 30 tools have JSON input schemas, focused descriptions, and read-only hints where appropriate. They call the same actions as the visible interface.
 
 <details>
-<summary>View all 29 tools</summary>
+<summary>View all 30 tools</summary>
 
 ### Onboarding and lessons
 
 - `advance_onboarding`
 - `get_onboarding_guidance`
+- `return_to_main_menu`
 - `list_lessons`
 - `start_lesson`
 

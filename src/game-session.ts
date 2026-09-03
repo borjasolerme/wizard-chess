@@ -3,3 +3,7 @@ export type GamePhase = 'entry' | 'onboarding' | 'setup' | 'active' | 'complete'
 export function isGameActive(phase: GamePhase) {
   return phase === 'active'
 }
+
+export function canReturnToMainMenu(phase: GamePhase) {
+  return phase !== 'entry'
+}

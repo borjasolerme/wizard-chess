@@ -105,6 +105,7 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .settings-dialog { width: min(27rem, calc(100vw - 2rem)); padding: 0; border: 1px solid rgba(199,168,107,.34); border-radius: .45rem; color: var(--paper); background: #101217; box-shadow: 0 24px 100px #000; }
 .settings-dialog::backdrop { background: rgba(2,3,5,.76); backdrop-filter: blur(5px); }
 .settings-dialog form { padding: 1.35rem; }
+.confirm-dialog .settings-note { margin: 0 0 1.15rem; font-size: .78rem; }
 .settings-heading { display: flex; align-items: flex-start; justify-content: space-between; }
 .settings-heading h2 { margin: .25rem 0 1.2rem; font: 600 1.7rem/1 "Iowan Old Style", "Palatino Linotype", Palatino, serif; }
 .close-settings { width: 2.2rem; height: 2.2rem; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; color: var(--muted); background: transparent; font-size: 1.3rem; line-height: 1; }
