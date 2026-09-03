@@ -65,7 +65,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <section class="stage">
       <canvas id="board" aria-label="Interactive 3D chessboard" aria-disabled="true"></canvas>
       <header class="brand"><h1>Wizard Chess</h1><p>Chess by voice or touch</p></header>
-      <nav class="modes" aria-label="Game mode"><button id="learn">Learn</button><button id="ranked">Play</button></nav>
       <div class="game-hud" aria-live="polite">
         <span class="turn-dot" aria-hidden="true"></span>
         <span id="status" class="status">Choose a lesson</span>
@@ -736,8 +735,6 @@ function leaveOnboarding() {
   syncProgression()
 }
 
-document.querySelector('#learn')!.addEventListener('click', () => choosePath('academy'))
-document.querySelector('#ranked')!.addEventListener('click', () => choosePath('battle'))
 document.querySelector('#choose-learn')!.addEventListener('click', () => choosePath('academy'))
 document.querySelector('#choose-mentor')!.addEventListener('click', () => choosePath('mentor'))
 document.querySelector('#choose-play')!.addEventListener('click', () => choosePath('battle'))
@@ -910,8 +907,6 @@ function startReplay(entry: GameHistory) {
   document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
   document.querySelector<HTMLElement>('#lesson')!.hidden = true
   document.querySelector<HTMLElement>('#ranked-setup')!.hidden = true
-  document.querySelector('#learn')!.classList.remove('active')
-  document.querySelector('#ranked')!.classList.add('active')
   syncProgression()
   renderReplay()
 }
@@ -964,8 +959,6 @@ function setMode(next: Mode) {
   document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
   document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
   document.querySelector<HTMLElement>('#onboarding-screen')!.hidden = true
-  document.querySelector('#learn')!.classList.toggle('active', next === 'learn')
-  document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
   document.querySelector<HTMLElement>('#ranked-setup')!.hidden = next !== 'ranked'
   if (next === 'learn') renderLessonSetup()

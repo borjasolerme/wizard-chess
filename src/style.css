@@ -25,11 +25,6 @@ button { color: inherit; cursor: pointer; }
 .brand h1 { margin: 0; font: 600 clamp(1.45rem, 2.5vw, 2.3rem)/1 "Iowan Old Style", "Palatino Linotype", Palatino, serif; letter-spacing: .035em; }
 .brand p { margin: .4rem 0 0; color: var(--muted); font-size: .72rem; letter-spacing: .19em; text-transform: uppercase; }
 
-.modes { position: absolute; z-index: 3; top: clamp(1.2rem, 3vw, 2.5rem); right: clamp(4.6rem, 7vw, 6.2rem); display: flex; gap: .25rem; padding: .25rem; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(8,10,13,.68); backdrop-filter: blur(14px); }
-.modes button { min-width: 4.6rem; padding: .52rem .9rem; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .78rem; }
-.modes button:hover { color: var(--paper); }
-.modes button.active { color: #14110d; background: var(--paper); }
-
 .game-hud { position: absolute; z-index: 2; top: clamp(5.7rem, 10vw, 7.4rem); left: 50%; display: flex; align-items: center; gap: .58rem; max-width: min(86vw, 34rem); padding: .62rem .9rem; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(8,10,13,.6); backdrop-filter: blur(12px); transform: translateX(-50%); }
 .turn-dot { width: .45rem; height: .45rem; flex: 0 0 auto; border-radius: 50%; background: #b8cc8f; box-shadow: 0 0 12px rgba(184,204,143,.7); }
 .game-hud[data-alert] .turn-dot { background: #d17a64; box-shadow: 0 0 12px rgba(209,122,100,.75); }
@@ -73,7 +68,7 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .entry-actions button:hover .path-icon { border-color: rgba(199,168,107,.58); background: rgba(199,168,107,.12); }
 .game-icon { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .awaiting-choice .brand { z-index: 4; }
-.awaiting-choice .modes, .awaiting-choice .game-hud { display: none; }
+.awaiting-choice .game-hud { display: none; }
 
 .onboarding-screen { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; padding: 6rem 1.2rem; background: rgba(5,7,11,.58); backdrop-filter: blur(3px); }
 .onboarding-screen[hidden] { display: none; }
@@ -84,7 +79,7 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .onboarding-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; margin-top: 1.5rem; }
 .onboarding-actions button { margin: 0; }
 .onboarding .brand { z-index: 4; }
-.onboarding .modes, .onboarding .game-hud { display: none; }
+.onboarding .game-hud { display: none; }
 
 .voice-dock { position: absolute; z-index: 4; bottom: clamp(1.1rem, 2.5vw, 2rem); left: 50%; display: grid; justify-items: center; width: min(28rem, 74vw); transform: translateX(-50%); pointer-events: none; }
 .voice-button { display: inline-flex; min-width: 8.5rem; align-items: center; justify-content: center; gap: .55rem; padding: .72rem 1.15rem; border: 1px solid rgba(255,255,255,.2); border-radius: 999px; background: rgba(12,14,18,.82); box-shadow: 0 8px 28px rgba(0,0,0,.35); backdrop-filter: blur(15px); pointer-events: auto; }
@@ -160,8 +155,6 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 
 @media (max-width: 680px) {
   .brand p { display: none; }
-  .modes { right: 4.4rem; }
-  .modes button { min-width: 3.8rem; padding-inline: .65rem; }
   .game-hud { top: 4.8rem; }
   .context-card { bottom: 5.5rem; }
   .voice-dock { width: 88vw; }
