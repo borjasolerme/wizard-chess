@@ -64,7 +64,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell awaiting-choice">
     <section class="stage">
       <canvas id="board" aria-label="Interactive 3D chessboard" aria-disabled="true"></canvas>
-      <header class="brand"><h1>Wizard Chess</h1><p>Chess by voice or touch</p></header>
+      <header class="brand"><h1>Wizard Chess</h1><p>Play using your voice</p></header>
       <div class="game-hud" aria-live="polite">
         <span class="turn-dot" aria-hidden="true"></span>
         <span id="status" class="status">Choose a lesson</span>
