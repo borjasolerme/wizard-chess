@@ -208,10 +208,6 @@ boardPlinth.position.y = -.28
 boardPlinth.castShadow = true
 boardPlinth.receiveShadow = true
 boardGroup.add(boardPlinth)
-const wardRing = new THREE.Mesh(new THREE.TorusGeometry(6.15, .025, 8, 96), new THREE.MeshBasicMaterial({ color: 0x9eb7ff, transparent: true, opacity: .22 }))
-wardRing.rotation.x = Math.PI / 2
-wardRing.position.y = -.02
-boardGroup.add(wardRing)
 const squareMeshes: THREE.Mesh[] = []
 for (let rank = 0; rank < 8; rank++) for (let file = 0; file < 8; file++) {
   const square = new THREE.Mesh(new THREE.BoxGeometry(1, .18, 1), new THREE.MeshStandardMaterial({ color: (rank + file) % 2 ? 0x252830 : 0x82745f, roughness: .9 }))
@@ -1211,7 +1207,6 @@ function resize() {
 function animate(now = performance.now()) {
   resize()
   controls.update()
-  wardRing.rotation.z += .0006
   for (let index = activeEffects.length - 1; index >= 0; index--) {
     const effect = activeEffects[index]
     const progress = (now - effect.born) / effect.duration
