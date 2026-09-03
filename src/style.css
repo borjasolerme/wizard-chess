@@ -159,6 +159,7 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
 .empty-history { margin: 0; padding: .8rem 0; }
 
 @media (max-width: 680px) {
+  .stage { background-image: url('/assets/chess-chamber-mobile.webp'); }
   .brand p { display: none; }
   .game-hud { top: 4.8rem; }
   .context-card { bottom: 5.5rem; }
@@ -166,4 +167,8 @@ select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,
   .entry-actions { grid-template-columns: 1fr; }
   .academy-list, .trophy-list { grid-template-columns: 1fr; }
   .progress-summary { grid-template-columns: auto 1fr; }
+}
+
+@media (pointer: coarse) {
+  body, button, select, summary { cursor: auto; }
 }

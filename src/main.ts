@@ -55,9 +55,9 @@ window.addEventListener('pointerdown', () => sounds.unlock(), { capture: true, o
 
 const icons = {
   microphone: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></svg>`,
-  academy: `<img class="path-art" src="/assets/icon-academy.png" alt="">`,
-  mentor: `<img class="path-art" src="/assets/icon-mentor.png" alt="">`,
-  battle: `<img class="path-art" src="/assets/icon-battle.png" alt="">`,
+  academy: `<img class="path-art" src="/assets/icon-academy.webp" width="96" height="96" alt="">`,
+  mentor: `<img class="path-art" src="/assets/icon-mentor.webp" width="96" height="96" alt="">`,
+  battle: `<img class="path-art" src="/assets/icon-battle.webp" width="96" height="96" alt="">`,
 } as const
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
