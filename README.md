@@ -31,7 +31,7 @@ The app is a static SPA and can be deployed to Vercel with the default Vite sett
 - Stockfish 18 Lite running locally in WebAssembly, with Apprentice, Duelist, and Master settings
 - Stockfish-grounded move grading, adaptive AI explanations, teaching memory, and post-game lesson recommendations
 - Twenty-seven WebMCP tools connected to the same game state as the visual board
-- Hands-free multilingual AI voice control using Qwen3 ASR, GLM 5.3 Flash, and Kokoro 82M through OpenRouter
+- Hands-free multilingual AI voice control using Gemini 3.1 Flash Lite for contextual audio understanding and Kokoro 82M for speech through OpenRouter
 - Persistent trophies, lesson progress, completed-game history, and move-by-move replays
 
 ## Test WebMCP

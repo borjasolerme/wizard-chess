@@ -19,6 +19,7 @@ type VoiceControllerOptions = {
 }
 
 type Interpretation = {
+  transcript: string
   language: string
   tool_name: string
   arguments_json: string
@@ -142,7 +143,7 @@ export class VoiceController {
         lastSpeechAt = performance.now()
       }
       const now = performance.now()
-      if ((heardSpeech && now - lastSpeechAt > 950) || now - startedAt > 12_000 || (!heardSpeech && now - startedAt > 7_000)) recorder.stop()
+      if ((heardSpeech && now - lastSpeechAt > 650) || now - startedAt > 10_000 || (!heardSpeech && now - startedAt > 5_000)) recorder.stop()
       else frame = requestAnimationFrame(monitor)
     }
     frame = requestAnimationFrame(monitor)
@@ -159,21 +160,17 @@ export class VoiceController {
 
   private async process(blob: Blob, mime: string) {
     this.setStatus('Understanding…', 'thinking')
-    const { text } = await postJson<{ text: string }>({
-      action: 'transcribe',
-      audio: await blobToBase64(blob),
-      format: audioFormatFromMime(mime),
-    }, this.options.getApiKey())
-    if (!text.trim()) return
-    this.options.transcript.textContent = `You: ${text}`
-
     const tools = this.options.getTools()
     const interpretation = await postJson<Interpretation>({
-      action: 'interpret',
-      transcript: text,
+      action: 'understand',
+      audio: await blobToBase64(blob),
+      format: audioFormatFromMime(mime),
       state: this.options.getState(),
       tools,
     }, this.options.getApiKey())
+    const text = interpretation.transcript
+    if (!text.trim()) return
+    this.options.transcript.textContent = `You: ${text}`
 
     let result: unknown = null
     if (interpretation.tool_name !== 'none') {
