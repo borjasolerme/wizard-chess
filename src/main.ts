@@ -8,7 +8,7 @@ import { normalizeOpenRouterKey, openRouterKeyStorageKey } from './api-key'
 import { isGameActive, type GamePhase } from './game-session'
 import { curriculum, isExpectedLessonMove, isLessonUnlocked, lessonById, lessons, nextLesson, pawnLesson, type Lesson } from './lesson'
 import { parseProgress, recordGame, recordLesson, trophies, type GameHistory, type ProgressData } from './progress'
-import { assessMove, createPostGameReview, inferMentorTier, rememberInsight, type MentorInsight, type PostGameReview } from './mentor'
+import { assessMove, createPostGameReview, explainRecommendation, inferMentorTier, rememberInsight, type MentorInsight, type PostGameReview } from './mentor'
 import { completeOnboarding, onboardingSteps, parseCompletedOnboarding, type OnboardingPath } from './onboarding'
 import { GameSounds, moveSoundCue } from './sound'
 import { gameScore, opponentRatings, updateElo } from './rating'
@@ -549,6 +549,23 @@ function sanFromUci(fen: string, uci: string | null) {
   } catch { return uci }
 }
 
+async function currentRecommendation() {
+  const fen = game.fen()
+  const analysis = await stockfish.analyze(fen)
+  if (!analysis.bestMove) return null
+  const move = new Chess(fen).move({
+    from: analysis.bestMove.slice(0, 2),
+    to: analysis.bestMove.slice(2, 4),
+    promotion: analysis.bestMove.slice(4) || 'q',
+  })
+  return {
+    move: move.san,
+    from: move.from,
+    to: move.to,
+    reason: explainRecommendation(move),
+  }
+}
+
 function renderMentorInsight(insight: MentorInsight | null) {
   mentorInsight = insight
 }
@@ -1067,7 +1084,17 @@ async function registerTools() {
     } }))
   addTool(defineTool({ name: 'get_game_state', title: 'Inspect the chess game', description: 'Returns the complete current game state needed to coach or play: mode, difficulty, position, side to move, checks, last move, legal moves, player rating, and opponent rating.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(gameState()) }))
   addTool(defineTool({ name: 'explain_last_move', title: 'Explain the last move', description: 'Explains the most recent move on the shared board in plain language.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(describeMove(lastMove)) }))
-  addTool(defineTool({ name: 'get_mentor_guidance', title: 'Ask the chess mentor', description: 'Returns the current Stockfish-grounded move grade, explanation, next plan, skill tier, and remembered learning themes.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult({ enabled: mentorEnabled, tier: inferMentorTier(progress.completedLessonIds.length), insight: mentorInsight, memory: progress.mentorMemory }) }))
+  addTool(defineTool({ name: 'get_mentor_guidance', title: 'Ask the chess mentor', description: 'Analyzes the current position and returns one exact legal move with a concrete reason. Use when the player asks what to play, what you recommend, or for help. It separately includes feedback about the last move.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => {
+    if (!isGameActive(phase) || mode !== 'ranked') return textResult({ error: 'Start a Mentor game before asking for a move.', state: gameState() })
+    if (!mentorEnabled) return textResult({ error: 'The mentor is off for this battle.', state: gameState() })
+    if (game.isGameOver() || outcome) return textResult({ error: 'The game is over. Open the review for your next lesson.', state: gameState() })
+    if (turnBusy || game.turn() !== (playerColor === 'white' ? 'w' : 'b')) return textResult({ error: 'Wait for Stockfish to finish its move.', state: gameState() })
+    try {
+      return textResult({ recommendation: await currentRecommendation(), lastMove: mentorInsight, tier: inferMentorTier(progress.completedLessonIds.length), memory: progress.mentorMemory })
+    } catch (error) {
+      return textResult({ error: error instanceof Error ? error.message : 'The mentor could not analyze this position.', state: gameState() })
+    }
+  } }))
   addTool(defineTool({ name: 'set_mentor_enabled', title: 'Turn chess mentor on or off', description: 'Enables or disables quiet move analysis for the current or next computer game.', inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', description: 'True for on-demand guidance and a post-game review; false for a quick battle.' } }, required: ['enabled'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ enabled }) => {
     mentorEnabled = enabled
     syncProgression()

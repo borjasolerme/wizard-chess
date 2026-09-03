@@ -46,4 +46,20 @@ describe('voice understanding', () => {
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(request.voice).toBe('bm_george')
   })
+
+  it('answers recommendation questions with the current move instead of generic praise', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ language: 'en', speech: 'Play Nf3. It develops your knight and controls the centre.' }) } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await handleVoice({
+      action: 'summarize', transcript: 'What do you recommend?', language: 'en', tool: 'get_mentor_guidance',
+      result: { recommendation: { move: 'Nf3', reason: 'It develops a piece.' }, lastMove: { playedMove: 'e4', grade: 'excellent' } },
+    }, 'test-key')
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(request.messages[0].content).toContain('lead with the recommended move')
+    expect(request.messages[0].content).toContain('Do not praise the previous move')
+  })
 })

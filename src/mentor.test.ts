@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assessMove, createPostGameReview, inferMentorTier, rememberInsight } from './mentor'
+import { assessMove, createPostGameReview, explainRecommendation, inferMentorTier, rememberInsight } from './mentor'
 
 describe('chess mentor', () => {
   it('adapts its teaching language to academy progress', () => {
@@ -18,6 +18,10 @@ describe('chess mentor', () => {
     })
     expect(insight).toMatchObject({ grade: 'excellent', concept: 'center control', recommendedMove: 'e4' })
     expect(insight.explanation).toContain('centre')
+  })
+
+  it('gives a concrete reason for the recommended move', () => {
+    expect(explainRecommendation({ san: 'Nf3', from: 'g1', to: 'f3', piece: 'n' })).toBe('It develops your knight.')
   })
 
   it('remembers strengths and mistakes without repeating concepts', () => {

@@ -66,6 +66,18 @@ function conceptForMove(move: MentorMove) {
   return 'piece development'
 }
 
+export function explainRecommendation(move: MentorMove) {
+  const pieces: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' }
+  const piece = pieces[move.piece] ?? 'piece'
+  if (move.san.includes('#')) return 'It delivers checkmate.'
+  if (move.san.includes('+')) return 'It checks the king.'
+  if (move.captured) return `It captures the ${pieces[move.captured] ?? 'piece'}.`
+  if (move.san === 'O-O' || move.san === 'O-O-O') return 'It castles and protects your king.'
+  if ((move.piece === 'n' || move.piece === 'b') && (move.from[1] === '1' || move.from[1] === '8')) return `It develops your ${piece}.`
+  if (move.piece === 'p' && ['d4', 'e4', 'd5', 'e5'].includes(move.to)) return 'It fights for the centre.'
+  return `It puts your ${piece} on ${move.to}.`
+}
+
 function explanationFor(grade: MoveGrade, concept: string, tier: MentorTier, bestMove: string | null) {
   const beginnerConcepts: Record<string, string> = {
     'center control': 'You claimed space in the centre, giving your pieces more useful paths.',

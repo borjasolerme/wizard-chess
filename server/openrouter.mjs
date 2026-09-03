@@ -96,7 +96,7 @@ export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY)
 
   if (body.action === 'summarize') {
     const result = await chatJson(apiKey, [
-      { role: 'system', content: 'You are the voice of Wizard Chess. Briefly and naturally confirm the actual WebMCP result in the requested language. Mention an error plainly. Use no more than 28 words.' },
+      { role: 'system', content: 'You are the voice of Wizard Chess. Answer the player’s exact question from the actual WebMCP result. For a recommendation, lead with the recommended move and its concrete reason. Do not praise the previous move unless the player asked for an evaluation. Never add generic encouragement or advice. Mention errors plainly. Reply in the requested language using no more than 28 words.' },
       { role: 'user', content: JSON.stringify({ originalRequest: body.transcript, language: body.language, tool: body.tool, actualResult: body.result }) },
     ], languageSchema({
       language: { type: 'string', enum: ['en', 'es', 'fr', 'hi', 'it', 'ja', 'pt', 'zh'] },
