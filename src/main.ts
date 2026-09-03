@@ -30,22 +30,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell">
     <section class="stage">
       <canvas id="board" aria-label="Interactive 3D chessboard"></canvas>
-      <header class="brand"><h1>Wizard Chess</h1><p>Speak. Move. Survive.</p></header>
+      <header class="brand"><h1>Wizard Chess</h1><p>Chess by voice or touch</p></header>
       <nav class="modes" aria-label="Game mode"><button id="learn" class="active">Learn</button><button id="ranked">Play</button></nav>
       <div class="game-hud" aria-live="polite">
         <span class="turn-dot" aria-hidden="true"></span>
-        <span id="status" class="status">Learn the board one move at a time</span>
+        <span id="status" class="status">Choose a lesson</span>
       </div>
 
       <section id="lesson" class="context-card lesson-card">
         <span class="eyebrow">First lesson</span>
-        <h2>Move like a pawn</h2>
+        <h2>Pawn movement</h2>
         <p>${lessons[0].description}</p>
         <button id="start-lesson" class="primary-action">Begin lesson</button>
       </section>
 
       <section id="ranked-setup" class="context-card play-card" hidden>
-        <span class="eyebrow">Face the board</span>
+        <span class="eyebrow">New game</span>
         <h2>Choose your opponent</h2>
         <label for="difficulty">Strength</label>
         <select id="difficulty"><option value="apprentice">Apprentice</option><option value="duelist">Duelist</option><option value="master">Master</option></select>
@@ -54,7 +54,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
       <div class="voice-dock">
         <button id="voice-toggle" class="voice-button" aria-pressed="false">Start voice</button>
-        <div id="voice-status" class="voice-status">Or play directly on the board</div>
+        <div id="voice-status" class="voice-status">Voice ready</div>
         <div id="voice-transcript" class="voice-transcript" aria-live="polite"></div>
       </div>
 
@@ -224,7 +224,7 @@ function setMode(next: Mode) {
   document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
   document.querySelector<HTMLElement>('#ranked-setup')!.hidden = next !== 'ranked'
-  updateStatus(next === 'learn' ? 'Learn the board one move at a time' : 'Choose a rival and begin')
+  updateStatus(next === 'learn' ? 'Choose a lesson' : 'Choose an opponent')
 }
 
 function gameState() {
