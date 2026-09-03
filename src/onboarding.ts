@@ -9,11 +9,11 @@ export const onboardingSteps: Record<OnboardingPath, OnboardingStep[]> = {
     { eyebrow: 'Academy · 2 of 2', title: 'Ask whenever you need help', body: 'Say a move such as “pawn from e2 to e4.” Say “guide me” to hear the current instruction again.' },
   ],
   mentor: [
-    { eyebrow: 'Mentor game · 1 of 2', title: 'Play a complete game', body: 'Face Stockfish while the Wizard quietly studies your choices and remembers the ideas worth practising.' },
-    { eyebrow: 'Mentor game · 2 of 2', title: 'Advice only when you ask', body: 'The board stays clear while you play. Say “guide me” for advice; your complete review appears when the game ends.' },
+    { eyebrow: 'Mentor game · 1 of 2', title: 'Play a complete game', body: 'Play Stockfish while the Wizard tracks your moves for the final review.' },
+    { eyebrow: 'Mentor game · 2 of 2', title: 'Ask when you need help', body: 'The board stays clear while you play. Say “guide me” for advice. Your full review appears after the game.' },
   ],
   battle: [
-    { eyebrow: 'Battle · 1 of 2', title: 'No interruptions', body: 'Play a clean game against Stockfish without coaching cards or commentary covering the board.' },
+    { eyebrow: 'Battle · 1 of 2', title: 'Play on your own', body: 'Play Stockfish without coaching or messages over the board.' },
     { eyebrow: 'Battle · 2 of 2', title: 'Choose your challenge', body: 'Select an opponent strength, begin the game, then move by voice or touch. Say “next” to continue.' },
   ],
 }

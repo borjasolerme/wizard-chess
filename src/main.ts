@@ -112,7 +112,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <section id="entry-screen" class="entry-screen">
         <div class="entry-card">
           <h2>Choose your path</h2>
-          <p class="entry-intro">Learn the magic, face a guided opponent, or step straight into battle.</p>
+          <p class="entry-intro">Learn a skill, play with a mentor, or face Stockfish alone.</p>
           <div class="entry-actions">
             <button id="choose-learn" class="recommended-path"><span class="path-icon">${icons.academy}</span><em>Continue</em><strong>Academy</strong><span id="next-lesson-copy">Learn one idea on the board</span></button>
             <button id="choose-mentor"><span class="path-icon">${icons.mentor}</span><em>Recommended</em><strong>Mentor game</strong><span>Play freely and ask the Wizard when you want advice</span></button>
