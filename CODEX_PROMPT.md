@@ -12,7 +12,7 @@ Two modes:
 Tech NOW:
 - Vite + TypeScript + Three.js 3D board (simple geometric/stone-like pieces is OK for v1; not photoreal)
 - chess.js for rules, stockfish.wasm or similar for AI difficulty levels
-- WebMCP imperative API: navigator.modelContext.registerTool
+- WebMCP imperative API: document.modelContext.registerTool
 - Deployable static/SPA (Vercel)
 
 Tech LATER (do NOT implement now, only mention in README):
@@ -22,8 +22,8 @@ Tech LATER (do NOT implement now, only mention in README):
 # WebMCP tools the site MUST register (minimum)
 - list_lessons
 - start_lesson
-- make_move (uci or from/to)
-- get_position (fen, side to move, legal moves, evaluation if cheap)
+- make_move (SAN or UCI notation)
+- get_game_state (mode, difficulty, FEN, side to move, legal moves, last move, and victories)
 - explain_last_move
 - set_difficulty
 - get_leaderboard
@@ -36,7 +36,7 @@ Human still plays by clicking pieces. Agent uses tools. Same board updates.
 Write these files (markdown, plain, easy language):
 1. WEBMCP.md — explain WebMCP to a smart non-specialist:
    - Not the same as MCP servers
-   - Website exposes tools in the BROWSER via navigator.modelContext.registerTool
+   - Website exposes tools in the BROWSER via document.modelContext.registerTool
    - Human uses UI, agent calls tools, user stays in the loop
    - How we test: ChatGPT in-app browser, or chrome://flags/#enable-webmcp-testing
    - Embed the sketches: assets/webmcp-one-picture.png and assets/wizard-chess-two-modes.png
@@ -62,7 +62,7 @@ Scaffold a working Vite TS app:
 - Two mode entry: Learn / Ranked
 - Stub tutorials (at least 1 lesson: how a pawn moves)
 - AI opponent with at least 3 difficulty levels (even if stockfish depth)
-- Register the WebMCP tools if navigator.modelContext exists; no-op message if not
+- Register the WebMCP tools if document.modelContext exists; no-op message if not
 - README with how to run, how to test WebMCP, challenge links
 - Push to GitHub, print the repo URL
 

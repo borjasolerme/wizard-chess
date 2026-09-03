@@ -8,7 +8,7 @@ The site publishes a menu of actions. Agents call tools. They do not guess butto
 
 ## How it works
 
-1. The page loads and registers tools with `navigator.modelContext.registerTool`.
+1. The page loads and registers tools with `document.modelContext.registerTool`.
 2. ChatGPT (in-app browser) sees that tool list.
 3. You say something like “play e2 to e4”. The agent calls `make_move`.
 4. The 3D piece actually moves. You watch.
