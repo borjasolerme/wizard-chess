@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { StockfishEngine } from './stockfish'
 import { VoiceController, type VoiceTool } from './voice'
 import { normalizeOpenRouterKey, openRouterKeyStorageKey } from './api-key'
+import { isGameActive, type GamePhase } from './game-session'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -16,6 +17,7 @@ type SavedGame = { fen: string; history?: string[]; mode: Mode; difficulty: Diff
 const lessons = [{ id: 'pawn-basics', title: 'How a pawn moves', description: 'Move a pawn forward one square, or two from its starting rank. Pawns capture diagonally.' }]
 let game = new Chess()
 let mode: Mode = 'learn'
+let phase: GamePhase = 'entry'
 let difficulty: Difficulty = 'apprentice'
 let selected: Square | null = null
 let lastMove: Move | null = null
@@ -28,17 +30,17 @@ const stockfish = new StockfishEngine()
 const gameTools: WebMCP.ModelContextTool[] = []
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <main class="shell">
+  <main class="shell awaiting-choice">
     <section class="stage">
-      <canvas id="board" aria-label="Interactive 3D chessboard"></canvas>
+      <canvas id="board" aria-label="Interactive 3D chessboard" aria-disabled="true"></canvas>
       <header class="brand"><h1>Wizard Chess</h1><p>Chess by voice or touch</p></header>
-      <nav class="modes" aria-label="Game mode"><button id="learn" class="active">Learn</button><button id="ranked">Play</button></nav>
+      <nav class="modes" aria-label="Game mode"><button id="learn">Learn</button><button id="ranked">Play</button></nav>
       <div class="game-hud" aria-live="polite">
         <span class="turn-dot" aria-hidden="true"></span>
         <span id="status" class="status">Choose a lesson</span>
       </div>
 
-      <section id="lesson" class="context-card lesson-card">
+      <section id="lesson" class="context-card lesson-card" hidden>
         <span class="eyebrow">First lesson</span>
         <h2>Pawn movement</h2>
         <p>${lessons[0].description}</p>
@@ -53,6 +55,17 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <button id="new-game" class="primary-action">Begin game</button>
       </section>
 
+      <section id="entry-screen" class="entry-screen">
+        <div class="entry-card">
+          <span class="eyebrow">Choose a path</span>
+          <h2>How do you want to begin?</h2>
+          <div class="entry-actions">
+            <button id="choose-learn"><strong>Learn</strong><span>Start with a guided lesson</span></button>
+            <button id="choose-play"><strong>Play</strong><span>Face the computer</span></button>
+          </div>
+        </div>
+      </section>
+
       <div class="voice-dock">
         <button id="voice-toggle" class="voice-button" aria-pressed="false">Start voice</button>
         <div id="voice-status" class="voice-status">Voice ready</div>
@@ -62,7 +75,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <details class="more-menu">
         <summary aria-label="More options">•••</summary>
         <div class="more-popover">
-          <button id="restart-game">New game</button>
+          <button id="restart-game" hidden>New game</button>
           <button id="open-settings">Settings</button>
           <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
         </div>
@@ -101,6 +114,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 const controls = new OrbitControls(camera, canvas)
 controls.target.set(0, 0, 0)
+controls.enabled = false
 controls.maxPolarAngle = Math.PI / 2.1
 controls.minDistance = 8
 controls.maxDistance = 20
@@ -241,6 +255,8 @@ async function startGame(color: PlayerColor = playerColor) {
   game.reset()
   lastMove = null
   selected = null
+  phase = 'active'
+  syncProgression()
   document.querySelector('.shell')!.classList.add('playing')
   renderPosition()
   updateStatus(`New ranked game. You play ${playerColor}.`)
@@ -250,6 +266,7 @@ async function startGame(color: PlayerColor = playerColor) {
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 canvas.addEventListener('click', event => {
+  if (!isGameActive(phase)) return
   const humanTurn = mode === 'learn' ? 'w' : playerColor === 'white' ? 'w' : 'b'
   if (game.turn() !== humanTurn || game.isGameOver() || paused || outcome) return
   const rect = canvas.getBoundingClientRect()
@@ -270,7 +287,9 @@ canvas.addEventListener('click', event => {
 
 document.querySelector('#learn')!.addEventListener('click', () => setMode('learn'))
 document.querySelector('#ranked')!.addEventListener('click', () => setMode('ranked'))
-document.querySelector('#start-lesson')!.addEventListener('click', () => { setMode('learn'); document.querySelector('.shell')!.classList.add('lesson-active'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4') })
+document.querySelector('#choose-learn')!.addEventListener('click', () => setMode('learn'))
+document.querySelector('#choose-play')!.addEventListener('click', () => setMode('ranked'))
+document.querySelector('#start-lesson')!.addEventListener('click', () => { setMode('learn'); phase = 'active'; syncProgression(); document.querySelector('.shell')!.classList.add('lesson-active'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4') })
 document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector('#restart-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector<HTMLSelectElement>('#difficulty')!.addEventListener('change', event => { difficulty = (event.target as HTMLSelectElement).value as Difficulty; updateStatus(`Difficulty set to ${difficulty}.`) })
@@ -316,9 +335,22 @@ removeKeyButton.addEventListener('click', () => {
   renderKeyState()
 })
 
+function syncProgression() {
+  const active = isGameActive(phase)
+  const shell = document.querySelector<HTMLElement>('.shell')!
+  shell.classList.toggle('awaiting-choice', phase === 'entry')
+  shell.classList.toggle('setting-up', phase === 'setup')
+  canvas.setAttribute('aria-disabled', String(!active))
+  controls.enabled = active
+  document.querySelector<HTMLButtonElement>('#restart-game')!.hidden = !active || mode !== 'ranked'
+}
+
 function setMode(next: Mode) {
   mode = next
+  phase = 'setup'
+  syncProgression()
   document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
+  document.querySelector<HTMLElement>('#entry-screen')!.hidden = true
   document.querySelector('#learn')!.classList.toggle('active', next === 'learn')
   document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
@@ -328,7 +360,8 @@ function setMode(next: Mode) {
 
 function gameState() {
   return {
-    mode,
+    mode: phase === 'entry' ? null : mode,
+    phase,
     difficulty,
     playerColor,
     paused,
@@ -375,8 +408,9 @@ async function registerTools() {
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
-  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); document.querySelector('.shell')!.classList.add('lesson-active'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
+  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); phase = 'active'; syncProgression(); document.querySelector('.shell')!.classList.add('lesson-active'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
+      if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game before making a move.', state: gameState() })
       if (paused) return textResult({ error: 'The game is paused. Resume it before moving.', state: gameState() })
       if (outcome) return textResult({ error: `The game has ended: ${outcome}. Start or load a game before moving.`, state: gameState() })
       const playableColor = mode === 'learn' ? 'w' : playerColor === 'white' ? 'w' : 'b'
@@ -394,6 +428,7 @@ async function registerTools() {
   addTool(defineTool({ name: 'set_difficulty', title: 'Set opponent difficulty', description: 'Sets the ranked opponent to Apprentice, Duelist, or Master and updates the visible selector.', inputSchema: { type: 'object', properties: { level: { type: 'string', enum: ['apprentice', 'duelist', 'master'], description: 'Opponent strength.' } }, required: ['level'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ level }) => { if (level !== 'apprentice' && level !== 'duelist' && level !== 'master') return textResult({ error: 'Difficulty must be apprentice, duelist, or master.', state: gameState() }); difficulty = level; document.querySelector<HTMLSelectElement>('#difficulty')!.value = level; updateStatus(`Difficulty set to ${level}.`); return textResult({ message: `Difficulty set to ${level}.`, state: gameState() }) } }))
   addTool(defineTool({ name: 'get_leaderboard', title: 'View local leaderboard', description: 'Returns the player\'s local ranked victory count from this browser.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult([{ rank: 1, player: 'You', wins: rankedWins }]) }))
   addTool(defineTool({ name: 'set_game_paused', title: 'Pause or resume the game', description: 'Pauses or resumes the current game. Moves are blocked while paused, and the visible status is updated.', inputSchema: { type: 'object', properties: { paused: { type: 'boolean', description: 'True to pause; false to resume.' } }, required: ['paused'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ paused: shouldPause }) => {
+    if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game first.', state: gameState() })
     if (outcome) return textResult({ error: `The game has ended: ${outcome}.`, state: gameState() })
     paused = shouldPause
     updateStatus(paused ? 'Game paused.' : 'Game resumed.')
@@ -401,6 +436,7 @@ async function registerTools() {
     return textResult({ message: paused ? 'Game paused.' : 'Game resumed.', opponentMove: opponentMove?.san ?? null, state: gameState() })
   } }))
   addTool(defineTool({ name: 'undo_last_turn', title: 'Undo the last turn', description: 'Rewinds the previous player turn. In ranked mode it normally removes both the opponent reply and the player move so the player can choose again.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game first.', state: gameState() })
     const undone: string[] = []
     const first = game.undo()
     if (!first) return textResult({ error: 'There are no moves to undo.', state: gameState() })
@@ -417,6 +453,7 @@ async function registerTools() {
     return textResult({ message: 'Previous turn undone.', undone, state: gameState() })
   } }))
   addTool(defineTool({ name: 'resign_game', title: 'Resign the current game', description: 'Ends the current ranked game as a resignation by the player and updates the visible status.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (!isGameActive(phase)) return textResult({ error: 'Start a ranked game first.', state: gameState() })
     if (mode !== 'ranked') return textResult({ error: 'Resignation is available in ranked mode.', state: gameState() })
     if (outcome || game.isGameOver()) return textResult({ error: 'The game has already ended.', state: gameState() })
     outcome = `${playerColor} resigned`
@@ -425,6 +462,7 @@ async function registerTools() {
     return textResult({ message: `You resigned as ${playerColor}.`, state: gameState() })
   } }))
   addTool(defineTool({ name: 'offer_draw', title: 'Offer a draw', description: 'Offers a draw to the local opponent. In this prototype the opponent accepts, ending the ranked game as a draw.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    if (!isGameActive(phase)) return textResult({ error: 'Start a ranked game first.', state: gameState() })
     if (mode !== 'ranked') return textResult({ error: 'Draw offers are available in ranked mode.', state: gameState() })
     if (outcome || game.isGameOver()) return textResult({ error: 'The game has already ended.', state: gameState() })
     outcome = 'draw by agreement'
@@ -433,6 +471,7 @@ async function registerTools() {
     return textResult({ message: 'Draw offered and accepted by the local opponent.', state: gameState() })
   } }))
   addTool(defineTool({ name: 'save_game', title: 'Save the current game', description: 'Saves the current position and game settings under a spoken name in this browser.', inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 40, description: 'Short name for the saved game.' } }, required: ['name'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ name }) => {
+    if (!isGameActive(phase)) return textResult({ error: 'Start a lesson or game first.', state: gameState() })
     const normalizedName = name.trim()
     if (!normalizedName || normalizedName.length > 40) return textResult({ error: 'Save name must contain 1 to 40 characters.' })
     const savedGames = readSavedGames()
@@ -462,6 +501,8 @@ async function registerTools() {
     restoreLastMove()
     document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
     setMode(mode)
+    phase = 'active'
+    syncProgression()
     if (mode === 'ranked') document.querySelector('.shell')!.classList.add('playing')
     renderPosition()
     updateStatus(`Loaded ${name}.`)
@@ -482,6 +523,8 @@ async function registerTools() {
     selected = null
     lastMove = null
     setMode('learn')
+    phase = 'active'
+    syncProgression()
     document.querySelector('.shell')!.classList.add('lesson-active')
     renderPosition()
     updateStatus('Custom position loaded for analysis.')
