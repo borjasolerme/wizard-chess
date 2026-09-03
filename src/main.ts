@@ -55,9 +55,9 @@ window.addEventListener('pointerdown', () => sounds.unlock(), { capture: true, o
 
 const icons = {
   microphone: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"/></svg>`,
-  academy: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c3-.8 5.5.1 8 2.1v11c-2.5-2-5-2.9-8-2.1V5.5ZM20 5.5c-3-.8-5.5.1-8 2.1v11c2.5-2 5-2.9 8-2.1V5.5Z"/><path d="M17.5 2v3M16 3.5h3"/></svg>`,
-  mentor: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-6 13h12L12 3ZM7 16l-2 4h14l-2-4"/><path d="m12.5 8 .6 1.2 1.4.2-1 1 .3 1.4-1.3-.7-1.3.7.3-1.4-1-1 1.4-.2.6-1.2Z"/></svg>`,
-  battle: `<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 4 6 6-2 2-6-6 2-2ZM19 4l-6 6 2 2 6-6-2-2ZM9 14l-5 5M15 14l5 5M3 21l3-3M21 21l-3-3"/></svg>`,
+  academy: `<img class="path-art" src="/assets/icon-academy.png" alt="">`,
+  mentor: `<img class="path-art" src="/assets/icon-mentor.png" alt="">`,
+  battle: `<img class="path-art" src="/assets/icon-battle.png" alt="">`,
 } as const
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -204,11 +204,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 const canvas = document.querySelector<HTMLCanvasElement>('#board')!
 const status = document.querySelector<HTMLDivElement>('#status')!
 const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x090b10)
+scene.background = null
 scene.fog = new THREE.Fog(0x090b10, 12, 25)
 const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 100)
 camera.position.set(8, 10, 10)
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
+renderer.setClearColor(0x090b10, 0)
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 const controls = new OrbitControls(camera, canvas)
