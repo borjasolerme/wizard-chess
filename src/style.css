@@ -1,30 +1,73 @@
-:root { font-family: Georgia, serif; color: #eee8da; background: #090b10; font-synthesis: none; }
+:root {
+  font-family: "Avenir Next", Avenir, system-ui, sans-serif;
+  color: #f2eee5;
+  background: #07090c;
+  font-synthesis: none;
+  --ink: #07090c;
+  --paper: #f2eee5;
+  --muted: #ada79b;
+  --gold: #c7a86b;
+  --panel: rgba(13, 15, 19, .86);
+}
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 50% 20%, #252735, #090b10 65%); }
+body { margin: 0; min-width: 320px; min-height: 100vh; overflow: hidden; background: radial-gradient(circle at 48% 38%, #232631 0, var(--ink) 64%); }
 button, select { font: inherit; }
-button { border: 1px solid #8d7754; border-radius: 4px; color: #f3ead8; background: #27231f; padding: .65rem 1rem; cursor: pointer; }
-button:hover, button.active { background: #6d5839; }
-#app { min-height: 100vh; }
-.shell { display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 100vh; }
-.stage { position: relative; min-height: 70vh; }
-#board { width: 100%; height: 100%; min-height: 70vh; display: block; }
-.brand { position: absolute; top: 1rem; left: 1rem; pointer-events: none; text-shadow: 0 2px 8px #000; }
-.brand h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 3.2rem); letter-spacing: .08em; }
-.brand p { margin: .25rem 0; color: #c4b69b; }
-.panel { padding: 1.3rem; background: #11131acc; border-left: 1px solid #413a30; backdrop-filter: blur(8px); }
-.modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
-.card { margin-top: 1rem; padding: 1rem; border: 1px solid #423c32; background: #171820; }
-.card h2, .card h3 { margin-top: 0; }
-.controls { display: grid; gap: .7rem; }
-select { width: 100%; padding: .55rem; color: inherit; background: #24242d; border: 1px solid #665a48; }
-.status { min-height: 3rem; color: #d4c7ad; line-height: 1.45; }
-.small { color: #9d978c; font: .85rem system-ui, sans-serif; }
-.voice-card { display: grid; gap: .7rem; }
-.voice-card h3 { margin-bottom: 0; }
-.voice-status, .voice-transcript { color: #d4c7ad; font: .9rem/1.45 system-ui, sans-serif; }
-.voice-status[data-state="listening"] { color: #b9d9aa; }
-.voice-status[data-state="thinking"] { color: #e0c58d; }
-.voice-status[data-state="speaking"] { color: #c5b4e8; }
-.voice-transcript { min-height: 2.7rem; white-space: pre-line; color: #aaa397; }
-#voice-toggle.active { border-color: #bfcf9b; background: #4e5b38; }
-@media (max-width: 800px) { .shell { grid-template-columns: 1fr; } .panel { border-left: 0; border-top: 1px solid #413a30; } .stage, #board { min-height: 58vh; } }
+button { color: inherit; cursor: pointer; }
+#app, .shell, .stage { width: 100%; height: 100vh; min-height: 560px; }
+.stage { position: relative; overflow: hidden; }
+#board { width: 100%; height: 100%; display: block; }
+
+.brand { position: absolute; z-index: 2; top: clamp(1.2rem, 3vw, 2.5rem); left: clamp(1.2rem, 3vw, 2.7rem); pointer-events: none; text-shadow: 0 2px 18px #000; }
+.brand h1 { margin: 0; font: 600 clamp(1.45rem, 2.5vw, 2.3rem)/1 "Iowan Old Style", "Palatino Linotype", Palatino, serif; letter-spacing: .035em; }
+.brand p { margin: .4rem 0 0; color: var(--muted); font-size: .72rem; letter-spacing: .19em; text-transform: uppercase; }
+
+.modes { position: absolute; z-index: 3; top: clamp(1.2rem, 3vw, 2.5rem); right: clamp(4.6rem, 7vw, 6.2rem); display: flex; gap: .25rem; padding: .25rem; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(8,10,13,.68); backdrop-filter: blur(14px); }
+.modes button { min-width: 4.6rem; padding: .52rem .9rem; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: .78rem; }
+.modes button:hover { color: var(--paper); }
+.modes button.active { color: #14110d; background: var(--paper); }
+
+.game-hud { position: absolute; z-index: 2; top: clamp(5.7rem, 10vw, 7.4rem); left: 50%; display: flex; align-items: center; gap: .58rem; max-width: min(86vw, 34rem); padding: .62rem .9rem; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; background: rgba(8,10,13,.6); backdrop-filter: blur(12px); transform: translateX(-50%); }
+.turn-dot { width: .45rem; height: .45rem; flex: 0 0 auto; border-radius: 50%; background: #b8cc8f; box-shadow: 0 0 12px rgba(184,204,143,.7); }
+.game-hud[data-alert] .turn-dot { background: #d17a64; box-shadow: 0 0 12px rgba(209,122,100,.75); }
+.status { overflow: hidden; color: #d6d1c7; font-size: .78rem; white-space: nowrap; text-overflow: ellipsis; }
+
+.context-card { position: absolute; z-index: 3; left: clamp(1.2rem, 3vw, 2.7rem); bottom: clamp(5.5rem, 9vw, 7rem); width: min(22rem, calc(100vw - 2.4rem)); padding: 1.25rem; border: 1px solid rgba(199,168,107,.3); border-radius: .35rem; background: var(--panel); box-shadow: 0 18px 60px rgba(0,0,0,.34); backdrop-filter: blur(18px); transition: opacity .2s ease, transform .2s ease; }
+.context-card[hidden] { display: none; }
+.playing .play-card, .lesson-active .lesson-card { display: none; }
+.eyebrow { color: var(--gold); font-size: .66rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+.context-card h2 { margin: .35rem 0 .55rem; font: 600 1.55rem/1.05 "Iowan Old Style", "Palatino Linotype", Palatino, serif; }
+.context-card p { margin: 0 0 1rem; color: var(--muted); font-size: .86rem; line-height: 1.45; }
+.context-card label { display: block; margin: .85rem 0 .35rem; color: var(--muted); font-size: .72rem; }
+select { width: 100%; padding: .7rem .75rem; border: 1px solid rgba(255,255,255,.14); border-radius: .25rem; color: var(--paper); background: #1a1d23; }
+.primary-action, .more-popover button { width: 100%; margin-top: .8rem; padding: .72rem 1rem; border: 1px solid var(--gold); border-radius: .25rem; color: #17130d; background: var(--gold); font-weight: 600; }
+.primary-action:hover, .more-popover button:hover { background: #d9bd87; }
+
+.voice-dock { position: absolute; z-index: 4; bottom: clamp(1.1rem, 2.5vw, 2rem); left: 50%; display: grid; justify-items: center; width: min(28rem, 74vw); transform: translateX(-50%); pointer-events: none; }
+.voice-button { position: relative; min-width: 8.5rem; padding: .72rem 1.1rem .72rem 2.25rem; border: 1px solid rgba(255,255,255,.2); border-radius: 999px; background: rgba(12,14,18,.82); box-shadow: 0 8px 28px rgba(0,0,0,.35); backdrop-filter: blur(15px); pointer-events: auto; }
+.voice-button::before { content: ""; position: absolute; width: .58rem; height: .78rem; margin: .08rem 0 0 -1.18rem; border: 1.5px solid currentColor; border-radius: 999px; }
+.voice-button:hover { border-color: var(--gold); }
+.voice-button.active { color: #11140d; border-color: #b8cc8f; background: #b8cc8f; }
+.voice-status { margin-top: .4rem; color: var(--muted); font-size: .68rem; text-shadow: 0 2px 10px #000; }
+.voice-status[data-state="listening"] { color: #c8daa6; }
+.voice-status[data-state="thinking"] { color: #e1c888; }
+.voice-status[data-state="speaking"] { color: #ccbce7; }
+.voice-transcript { max-width: 100%; max-height: 3.2rem; overflow: hidden; margin-top: .25rem; color: #d4cec2; font: .74rem/1.35 "Iowan Old Style", Palatino, serif; text-align: center; white-space: pre-line; text-shadow: 0 2px 10px #000; }
+
+.more-menu { position: absolute; z-index: 5; top: clamp(1.2rem, 3vw, 2.5rem); right: clamp(1.2rem, 3vw, 2.7rem); }
+.more-menu summary { display: grid; width: 2.6rem; height: 2.6rem; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; color: var(--muted); background: rgba(8,10,13,.68); cursor: pointer; list-style: none; letter-spacing: .12em; backdrop-filter: blur(14px); }
+.more-menu summary::-webkit-details-marker { display: none; }
+.more-menu[open] summary { color: var(--paper); border-color: rgba(199,168,107,.5); }
+.more-popover { position: absolute; top: 3.1rem; right: 0; width: 15rem; padding: 1rem; border: 1px solid rgba(255,255,255,.12); border-radius: .35rem; background: rgba(12,14,18,.94); box-shadow: 0 18px 60px rgba(0,0,0,.45); backdrop-filter: blur(18px); }
+.more-popover button { margin: 0 0 .9rem; color: var(--paper); background: transparent; }
+.meta-row { display: flex; justify-content: space-between; padding: .7rem 0; border-top: 1px solid rgba(255,255,255,.08); color: var(--muted); font-size: .76rem; }
+.meta-row strong { color: var(--paper); }
+.small { margin-top: .65rem; color: #77766f; font-size: .66rem; line-height: 1.35; }
+
+@media (max-width: 680px) {
+  .brand p { display: none; }
+  .modes { right: 4.4rem; }
+  .modes button { min-width: 3.8rem; padding-inline: .65rem; }
+  .game-hud { top: 4.8rem; }
+  .context-card { bottom: 5.5rem; }
+  .voice-dock { width: 88vw; }
+}

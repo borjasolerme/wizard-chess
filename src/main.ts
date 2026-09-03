@@ -30,27 +30,44 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell">
     <section class="stage">
       <canvas id="board" aria-label="Interactive 3D chessboard"></canvas>
-      <div class="brand"><h1>Wizard Chess</h1><p>Human and agent. One board.</p></div>
-    </section>
-    <aside class="panel">
-      <div class="modes"><button id="learn" class="active">Learn</button><button id="ranked">Ranked</button></div>
-      <section id="lesson" class="card"><h2>How a pawn moves</h2><p>${lessons[0].description}</p><button id="start-lesson">Start lesson</button></section>
-      <section class="card controls">
-        <label for="difficulty">Opponent</label>
+      <header class="brand"><h1>Wizard Chess</h1><p>Speak. Move. Survive.</p></header>
+      <nav class="modes" aria-label="Game mode"><button id="learn" class="active">Learn</button><button id="ranked">Play</button></nav>
+      <div class="game-hud" aria-live="polite">
+        <span class="turn-dot" aria-hidden="true"></span>
+        <span id="status" class="status">Learn the board one move at a time</span>
+      </div>
+
+      <section id="lesson" class="context-card lesson-card">
+        <span class="eyebrow">First lesson</span>
+        <h2>Move like a pawn</h2>
+        <p>${lessons[0].description}</p>
+        <button id="start-lesson" class="primary-action">Begin lesson</button>
+      </section>
+
+      <section id="ranked-setup" class="context-card play-card" hidden>
+        <span class="eyebrow">Face the board</span>
+        <h2>Choose your opponent</h2>
+        <label for="difficulty">Strength</label>
         <select id="difficulty"><option value="apprentice">Apprentice</option><option value="duelist">Duelist</option><option value="master">Master</option></select>
-        <button id="new-game">Start ranked game</button>
-        <div id="status" class="status">Select a white piece, then its destination.</div>
-        <div id="webmcp" class="small"></div>
-        <div class="small">Local victories: <span id="wins">${rankedWins}</span></div>
+        <button id="new-game" class="primary-action">Begin game</button>
       </section>
-      <section class="card voice-card">
-        <h3>Voice control</h3>
-        <button id="voice-toggle" aria-pressed="false">Start voice</button>
-        <div id="voice-status" class="voice-status">Speak naturally in your language. No keyboard needed.</div>
+
+      <div class="voice-dock">
+        <button id="voice-toggle" class="voice-button" aria-pressed="false">Start voice</button>
+        <div id="voice-status" class="voice-status">Or play directly on the board</div>
         <div id="voice-transcript" class="voice-transcript" aria-live="polite"></div>
-        <div class="small">Qwen ASR · GLM Flash · Kokoro voice</div>
-      </section>
-    </aside>
+      </div>
+
+      <details class="more-menu">
+        <summary aria-label="More options">•••</summary>
+        <div class="more-popover">
+          <button id="restart-game">New game</button>
+          <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
+          <div id="webmcp" class="small"></div>
+          <div class="small">Qwen ASR · GLM Flash · Kokoro</div>
+        </div>
+      </details>
+    </section>
   </main>`
 
 const canvas = document.querySelector<HTMLCanvasElement>('#board')!
@@ -117,6 +134,7 @@ function describeMove(move: Move | null) {
 }
 function updateStatus(message?: string) {
   status.textContent = message ?? (game.isGameOver() ? `Game over: ${game.isCheckmate() ? 'checkmate' : 'draw'}.` : `${game.turn() === 'w' ? 'White' : 'Black'} to move.`)
+  status.parentElement?.toggleAttribute('data-alert', game.inCheck() || game.isGameOver() || outcome !== null)
 }
 function finishMove(move: Move) {
   lastMove = move
@@ -166,6 +184,7 @@ async function startGame(color: PlayerColor = playerColor) {
   game.reset()
   lastMove = null
   selected = null
+  document.querySelector('.shell')!.classList.add('playing')
   renderPosition()
   updateStatus(`New ranked game. You play ${playerColor}.`)
   return maybeAiTurn()
@@ -194,15 +213,18 @@ canvas.addEventListener('click', event => {
 
 document.querySelector('#learn')!.addEventListener('click', () => setMode('learn'))
 document.querySelector('#ranked')!.addEventListener('click', () => setMode('ranked'))
-document.querySelector('#start-lesson')!.addEventListener('click', () => { setMode('learn'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.') })
+document.querySelector('#start-lesson')!.addEventListener('click', () => { setMode('learn'); document.querySelector('.shell')!.classList.add('lesson-active'); game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4') })
 document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
+document.querySelector('#restart-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector<HTMLSelectElement>('#difficulty')!.addEventListener('change', event => { difficulty = (event.target as HTMLSelectElement).value as Difficulty; updateStatus(`Difficulty set to ${difficulty}.`) })
 function setMode(next: Mode) {
   mode = next
+  document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
   document.querySelector('#learn')!.classList.toggle('active', next === 'learn')
   document.querySelector('#ranked')!.classList.toggle('active', next === 'ranked')
   document.querySelector<HTMLElement>('#lesson')!.hidden = next !== 'learn'
-  updateStatus(next === 'learn' ? 'Choose a lesson and practise on the board.' : 'Start a game. You play White.')
+  document.querySelector<HTMLElement>('#ranked-setup')!.hidden = next !== 'ranked'
+  updateStatus(next === 'learn' ? 'Learn the board one move at a time' : 'Choose a rival and begin')
 }
 
 function gameState() {
@@ -255,7 +277,7 @@ async function registerTools() {
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
   const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
-  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
+  addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); document.querySelector('.shell')!.classList.add('lesson-active'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Your move · pawn e2 to e3 or e4'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
       if (paused) return textResult({ error: 'The game is paused. Resume it before moving.', state: gameState() })
       if (outcome) return textResult({ error: `The game has ended: ${outcome}. Start or load a game before moving.`, state: gameState() })
@@ -342,6 +364,7 @@ async function registerTools() {
     restoreLastMove()
     document.querySelector<HTMLSelectElement>('#difficulty')!.value = difficulty
     setMode(mode)
+    if (mode === 'ranked') document.querySelector('.shell')!.classList.add('playing')
     renderPosition()
     updateStatus(`Loaded ${name}.`)
     return textResult({ message: `Loaded ${name}.`, state: gameState() })
@@ -361,6 +384,7 @@ async function registerTools() {
     selected = null
     lastMove = null
     setMode('learn')
+    document.querySelector('.shell')!.classList.add('lesson-active')
     renderPosition()
     updateStatus('Custom position loaded for analysis.')
     return textResult({ message: 'Custom position loaded.', state: gameState() })
