@@ -1,8 +1,8 @@
 # Wizard Chess
 
-A voice-first 3D chess game where a person and an AI agent share the same board.
+A 3D chess game controlled by voice, mouse, touch, or a WebMCP agent. The player and agent read and change the same board.
 
-Learn the rules in Academy, play with a live mentor, or face Stockfish in Battle. Every meaningful action is exposed through WebMCP, so an agent can read the exact position, explain it, and act without guessing where to click.
+Choose Academy to learn the rules, Mentor game to get advice while playing, or Battle to face Stockfish. Wizard Chess registers 29 WebMCP tools for moves, lessons, coaching, game controls, saves, history, and camera views.
 
 Built for the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/) on [Devpost](https://webmcp.devpost.com/).
 
@@ -10,11 +10,11 @@ Built for the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/) on
 
 ## Why WebMCP fits chess
 
-A chessboard is visual, but its state is structured. A screen-only agent has to infer 64 squares, identify 32 similar pieces, and translate a move into pointer coordinates. Wizard Chess gives the agent direct access to the same legal game state used by the player.
+Chess works well with WebMCP because the board has an exact, structured state. A screen-only agent has to infer 64 squares, identify 32 similar pieces, and translate a move into pointer coordinates. Wizard Chess gives the agent the position, legal actions, move history, and current game mode directly.
 
 The agent can inspect the position with `get_game_state`, make a legal move with `make_move`, start a lesson, change the opponent, offer guidance, save a game, or replay one. The board updates immediately because the visible interface, built-in voice controller, and browser agent all call the same tool handlers.
 
-This makes the agent part of the game loop. The player can ask what to do, choose whether to follow the advice, and continue entirely by voice.
+The player can ask for a move, hear the reason, accept or ignore the advice, and keep playing by voice.
 
 ## Three ways to play
 
@@ -47,7 +47,7 @@ The built-in voice loop uses:
 - `google/gemini-3.1-flash-lite` through OpenRouter for audio understanding, tool selection, and concise answers
 - `hexgrad/kokoro-82m` through OpenRouter for spoken responses
 
-After the player grants microphone access and starts voice once, the game listens again after each spoken reply. Commands can cover the full flow, including onboarding, lessons, matches, moves, guidance, game controls, camera views, saves, history, and replay.
+After the player grants microphone access and starts voice once, the game listens again after each spoken reply. The player can start lessons and matches, move pieces, request guidance, pause, undo, save, change the camera, and replay previous games.
 
 ## Features
 
@@ -79,7 +79,7 @@ The board, lessons, Stockfish opponent, local progress, and WebMCP tools work wi
 
 ## Configure voice
 
-The simplest setup is to open **Settings** inside the game and save an OpenRouter API key. The key stays in that browser and can be removed from the same screen.
+Open **Settings** inside the game and save an OpenRouter API key. The key stays in that browser and can be removed from the same screen.
 
 For local development, you can instead create `.env.local`:
 
@@ -188,7 +188,7 @@ npm run preview
 
 ## Deployment
 
-The repository is ready for Vercel. The frontend builds as a Vite SPA, while [`api/voice.mjs`](api/voice.mjs) provides the production voice endpoint.
+Vercel builds the frontend as a Vite SPA and runs [`api/voice.mjs`](api/voice.mjs) as the production voice endpoint.
 
 1. Import the GitHub repository into Vercel.
 2. Keep the detected Vite build settings.
@@ -213,7 +213,7 @@ The core game can run on any static host. Built-in voice also needs a compatible
 
 ## Scope
 
-This version uses original procedural chess pieces so it stays fast, deployable, and legally clear. Film-accurate character models and generated cinematic capture clips are ideas for a later version.
+This version uses original procedural chess pieces. Film-accurate character models and generated cinematic capture clips remain outside the current build.
 
 ## License
 
