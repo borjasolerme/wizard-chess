@@ -1,6 +1,6 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1'
 const models = {
-  understanding: 'google/gemini-3.1-flash-lite',
+  understanding: 'google/gemini-3.5-flash-lite',
   speech: 'hexgrad/kokoro-82m',
 }
 const voices = {
@@ -42,8 +42,8 @@ async function chatJson(apiKey, messages, responseFormat) {
     model: models.understanding,
     messages,
     response_format: responseFormat,
-    temperature: 0.1,
-    max_tokens: 220,
+    temperature: 0,
+    max_tokens: 180,
     provider: { sort: 'latency' },
   })
   const payload = await response.json()
@@ -75,7 +75,7 @@ export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY)
     const result = await chatJson(apiKey, [
       {
         role: 'system',
-        content: `You are the fast multilingual voice controller for Wizard Chess. Listen to the audio, transcribe the speaker in their original language, and select exactly one available WebMCP action when they ask to affect or inspect the game or navigate the interface. For interface navigation, use the matching tool for requests such as open settings, show progress, choose a game path, go back, or return to the main menu. Use the current state and legalMoves to resolve ambiguous piece names and coordinates, but do not invent a move. Return tool arguments as a JSON object encoded inside arguments_json. For ordinary conversation choose none. Keep speech natural, warm, and under 22 words in the user's language. Language must be one of en, es, fr, hi, it, ja, pt, zh; use en only when the user's language is unsupported.`,
+        content: `You are the fast multilingual voice controller for Wizard Chess. Listen to the audio, transcribe the speaker in their original language, and select exactly one available WebMCP action when they ask to affect or inspect the game or navigate the interface. For interface navigation, use the matching tool for requests such as open settings, show progress, choose a game path, go back, or return to the main menu. Use the current state and legalMoves to resolve ambiguous piece names and coordinates, but do not invent a move. Return tool arguments as a JSON object encoded inside arguments_json. For ordinary conversation choose none. When choosing a tool, speech is only a short acknowledgement of the requested action and must not invent unseen result data. Keep speech natural, warm, and under 22 words in the user's language. Language must be one of en, es, fr, hi, it, ja, pt, zh; use en only when the user's language is unsupported.`,
       },
       {
         role: 'user',

@@ -1,5 +1,6 @@
 import { audioFormatFromMime, blobToBase64, voiceLanguage } from './voice-utils'
 import { voiceRequestHeaders } from './api-key'
+import { immediateToolSpeech } from './voice-response'
 
 export type VoiceTool = {
   name: string
@@ -47,6 +48,11 @@ export class VoiceController {
   private cancelled = false
   private recorder: MediaRecorder | null = null
   private audio: HTMLAudioElement | null = null
+  private finishAudio: (() => void) | null = null
+  private stream: MediaStream | null = null
+  private audioContext: AudioContext | null = null
+  private source: MediaStreamAudioSourceNode | null = null
+  private analyser: AnalyserNode | null = null
 
   constructor(private readonly options: VoiceControllerOptions) {
     options.button.addEventListener('click', () => this.toggle())
@@ -72,6 +78,7 @@ export class VoiceController {
       this.cancelled = true
       if (this.recorder?.state && this.recorder.state !== 'inactive') this.recorder.stop()
       this.audio?.pause()
+      this.finishAudio?.()
       this.setStatus('Voice stopped.')
       this.renderButton()
       return
@@ -102,8 +109,11 @@ export class VoiceController {
     this.enabled = true
     this.cancelled = false
     this.renderButton()
-    await this.runLoop()
-    this.starting = false
+    try {
+      await this.runLoop()
+    } finally {
+      this.starting = false
+    }
   }
 
   async narrate(text: string, language = 'en') {
@@ -117,30 +127,52 @@ export class VoiceController {
       try {
         const recording = await this.recordUtterance()
         if (!this.enabled || this.cancelled) break
-        if (!recording || recording.blob.size < 500) continue
+        if (!recording || recording.blob.size < 300) continue
         await this.process(recording.blob, recording.mime)
       } catch (error) {
         this.enabled = false
         this.setStatus(error instanceof Error ? error.message : String(error))
       }
     }
+    await this.releaseInput()
     this.renderButton()
   }
 
+  private async ensureInput() {
+    if (this.stream?.active && this.analyser) return
+    this.setStatus('Connecting microphone…')
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    this.audioContext = new AudioContext()
+    this.source = this.audioContext.createMediaStreamSource(this.stream)
+    this.analyser = this.audioContext.createAnalyser()
+    this.analyser.fftSize = 1024
+    this.source.connect(this.analyser)
+  }
+
+  private async releaseInput() {
+    const stream = this.stream
+    const source = this.source
+    const context = this.audioContext
+    this.stream = null
+    this.source = null
+    this.analyser = null
+    this.audioContext = null
+    stream?.getTracks().forEach(track => track.stop())
+    source?.disconnect()
+    if (context && context.state !== 'closed') await context.close()
+  }
+
   private async recordUtterance(): Promise<{ blob: Blob; mime: string } | null> {
+    await this.ensureInput()
+    if (!this.enabled || this.cancelled) return null
     this.setStatus('Listening… speak naturally.', 'listening')
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
     const mime = recorderTypes.find(type => MediaRecorder.isTypeSupported(type)) ?? ''
-    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
+    const recorder = new MediaRecorder(this.stream!, mime ? { mimeType: mime } : undefined)
     this.recorder = recorder
     const chunks: Blob[] = []
     recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data) })
 
-    const audioContext = new AudioContext()
-    const source = audioContext.createMediaStreamSource(stream)
-    const analyser = audioContext.createAnalyser()
-    analyser.fftSize = 1024
-    source.connect(analyser)
+    const analyser = this.analyser!
     const samples = new Uint8Array(analyser.fftSize)
     const startedAt = performance.now()
     let heardSpeech = false
@@ -157,20 +189,17 @@ export class VoiceController {
         const value = (sample - 128) / 128
         energy += value * value
       }
-      if (Math.sqrt(energy / samples.length) > 0.025) {
+      if (Math.sqrt(energy / samples.length) > 0.015) {
         heardSpeech = true
         lastSpeechAt = performance.now()
       }
       const now = performance.now()
-      if ((heardSpeech && now - lastSpeechAt > 650) || now - startedAt > 10_000 || (!heardSpeech && now - startedAt > 5_000)) recorder.stop()
+      if ((heardSpeech && now - lastSpeechAt > 700) || now - startedAt > 8_000 || (!heardSpeech && now - startedAt > 4_000)) recorder.stop()
       else frame = requestAnimationFrame(monitor)
     }
     frame = requestAnimationFrame(monitor)
     await stopped
     cancelAnimationFrame(frame)
-    stream.getTracks().forEach(track => track.stop())
-    source.disconnect()
-    await audioContext.close()
     this.recorder = null
     if (!heardSpeech) return null
     const actualMime = recorder.mimeType || mime || 'audio/webm'
@@ -201,8 +230,9 @@ export class VoiceController {
       }
     }
 
-    const response = result === null
-      ? { language: interpretation.language, speech: interpretation.speech }
+    const immediateSpeech = result === null ? null : immediateToolSpeech(result, interpretation.speech)
+    const response = result === null || immediateSpeech
+      ? { language: interpretation.language, speech: immediateSpeech ?? interpretation.speech }
       : await postJson<{ language: string; speech: string }>({
           action: 'summarize',
           transcript: text,
@@ -228,13 +258,24 @@ export class VoiceController {
     const url = URL.createObjectURL(await response.blob())
     const audio = new Audio(url)
     this.audio = audio
-    await audio.play()
-    await new Promise<void>(resolve => {
-      audio.addEventListener('ended', () => resolve(), { once: true })
-      audio.addEventListener('error', () => resolve(), { once: true })
-    })
-    URL.revokeObjectURL(url)
-    this.audio = null
+    try {
+      await audio.play()
+      await new Promise<void>(resolve => {
+        let finished = false
+        const finish = () => {
+          if (finished) return
+          finished = true
+          resolve()
+        }
+        this.finishAudio = finish
+        audio.addEventListener('ended', finish, { once: true })
+        audio.addEventListener('error', finish, { once: true })
+      })
+    } finally {
+      URL.revokeObjectURL(url)
+      this.audio = null
+      this.finishAudio = null
+    }
     if (this.enabled) this.setStatus('Listening…', 'listening')
   }
 }

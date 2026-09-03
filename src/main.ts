@@ -1205,7 +1205,7 @@ async function registerTools() {
       const move = uci ? playMove(uci[1], uci[2], uci[3] ?? 'q') : playSanMove(normalized)
       if (!move) return textResult({ error: lessonRunning ? `Try this: ${currentLesson.steps[lessonStep].instruction}` : `"${notation}" is not legal in the current position.`, state: gameState() })
       const opponentMove = await completePlayerTurn(move, beforeFen)
-      return textResult({ played: move.san, opponentReply: opponentMove?.san ?? null, mentor: mentorEnabled ? mentorInsight : null, state: gameState() })
+      return textResult({ message: `${move.san} played.`, played: move.san, opponentReply: opponentMove?.san ?? null, mentor: mentorEnabled ? mentorInsight : null, state: gameState() })
     } }))
   addTool(defineTool({ name: 'get_game_state', title: 'Inspect the chess game', description: 'Returns the complete current game state needed to coach or play: mode, difficulty, position, side to move, checks, last move, legal moves, player rating, and opponent rating.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(gameState()) }))
   addTool(defineTool({ name: 'explain_last_move', title: 'Explain the last move', description: 'Explains the most recent move on the shared board in plain language.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(describeMove(lastMove)) }))

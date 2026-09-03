@@ -2,7 +2,7 @@
 
 A 3D chess game controlled by voice, mouse, touch, or a WebMCP agent. The player and agent read and change the same board.
 
-Choose Academy to learn the rules, Mentor game to get advice while playing, or Battle to face Stockfish. Wizard Chess registers 30 WebMCP tools for moves, lessons, coaching, game controls, saves, history, and camera views.
+Choose Academy to learn the rules, Mentor game to get advice while playing, or Battle to face Stockfish. Wizard Chess registers 36 WebMCP tools for navigation, settings, moves, lessons, coaching, game controls, saves, history, and camera views.
 
 Built for the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/) on [Devpost](https://webmcp.devpost.com/).
 
@@ -38,7 +38,7 @@ Mouse or touch ─────────────────────�
 
 There are three ways into one game state:
 
-1. **A browser agent** discovers 30 tools registered with `document.modelContext.registerTool()`.
+1. **A browser agent** discovers 36 tools registered with `document.modelContext.registerTool()`.
 2. **Built-in voice** records a request, sends it to the local `/api/voice` endpoint, and lets Gemini choose from the same tool definitions. The selected handler runs locally, then Kokoro speaks the response.
 3. **Mouse or touch** calls those same game actions from the visible interface.
 
@@ -46,10 +46,20 @@ There are three ways into one game state:
 
 The built-in voice loop uses:
 
-- `google/gemini-3.1-flash-lite` through OpenRouter for audio understanding, tool selection, and concise answers
+- `google/gemini-3.5-flash-lite` through OpenRouter for audio understanding, tool selection, and concise answers
 - `hexgrad/kokoro-82m` through OpenRouter for spoken responses
 
-After the player grants microphone access and starts voice once, the game listens again after each spoken reply. The player can start lessons and matches, move pieces, request guidance, pause, undo, save, change the camera, and replay previous games.
+Voice starts automatically when the page has an OpenRouter key or a configured server fallback. A browser may still ask for microphone permission once. The game then listens again after each spoken reply. The player can navigate the whole interface, start lessons and matches, move pieces, request guidance, pause, undo, save, change the camera, and replay previous games.
+
+### Voice request flow
+
+The voice controller keeps one microphone stream and analyser alive for the session instead of rebuilding them after every sentence. Each utterance takes this path:
+
+1. Gemini transcribes the audio and chooses one of the same WebMCP actions exposed to browser agents.
+2. The selected action runs against the visible game state.
+3. Routine successful actions use the acknowledgement from the first response and go directly to speech. Data answers and errors receive a second, result-grounded summary before speech.
+
+This keeps navigation and moves responsive without allowing the model to invent progress, recommendations, or errors. The OpenRouter key can be saved through `save_openrouter_key`, but that sensitive action is excluded from the built-in voice tool list so a key is never requested or repeated aloud.
 
 ## Features
 
@@ -121,18 +131,27 @@ If WebMCP is unavailable, the visual game remains playable through mouse, touch,
 
 ## WebMCP tool surface
 
-All 30 tools have JSON input schemas, focused descriptions, and read-only hints where appropriate. They call the same actions as the visible interface.
+All 36 tools have JSON input schemas, focused descriptions, and read-only hints where appropriate. They call the same actions as the visible interface.
 
 <details>
-<summary>View all 30 tools</summary>
+<summary>View all 36 tools</summary>
 
 ### Onboarding and lessons
 
 - `advance_onboarding`
 - `get_onboarding_guidance`
 - `return_to_main_menu`
+- `navigate_back`
+- `open_game_path`
 - `list_lessons`
 - `start_lesson`
+
+### Interface and settings
+
+- `open_settings`
+- `save_openrouter_key`
+- `remove_openrouter_key`
+- `open_progress`
 
 ### Play and game control
 
@@ -209,6 +228,7 @@ The core game can run on any static host. Built-in voice also needs a compatible
 | `src/stockfish.ts` | Local Stockfish worker and analysis |
 | `src/mentor.ts` | Move grading and coaching context |
 | `src/voice.ts` | Microphone, tool selection, execution, and spoken reply loop |
+| `src/voice-response.ts` | Chooses when a successful action can skip a second AI request |
 | `server/openrouter.mjs` | OpenRouter audio understanding and speech generation |
 | `src/progress.ts` | Local lessons, trophies, history, and replay data |
 | `src/rating.ts` | Local Elo calculation and opponent settings |

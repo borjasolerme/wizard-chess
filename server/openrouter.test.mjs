@@ -28,8 +28,9 @@ describe('voice understanding', () => {
     expect(result.json.transcript).toBe('Move the knight to f3')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(request.model).toBe('google/gemini-3.1-flash-lite')
+    expect(request.model).toBe('google/gemini-3.5-flash-lite')
     expect(request.provider).toEqual({ sort: 'latency' })
+    expect(request.messages[0].content).toContain('must not invent unseen result data')
     expect(request.messages[1].content[1]).toEqual({ type: 'input_audio', input_audio: { data: 'a'.repeat(500), format: 'webm' } })
   })
 
