@@ -111,7 +111,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
       <section id="entry-screen" class="entry-screen">
         <div class="entry-card">
-          <span class="eyebrow">The board is waiting</span>
           <h2>Choose your path</h2>
           <p class="entry-intro">Learn the magic, face a guided opponent, or step straight into battle.</p>
           <div class="entry-actions">
