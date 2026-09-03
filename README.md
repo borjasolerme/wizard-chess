@@ -10,6 +10,8 @@ You need Node.js 20.19 or newer.
 
 ```bash
 npm install
+cp .env.example .env.local
+# Add your OpenRouter key to .env.local
 npm run dev
 ```
 
@@ -28,8 +30,9 @@ The app is a static SPA and can be deployed to Vercel with the default Vite sett
 - Legal chess moves powered by `chess.js`
 - Learn and Ranked entry modes
 - A pawn movement lesson
-- A lightweight local opponent with Apprentice, Duelist, and Master settings
-- Eight WebMCP tools connected to the same game state as the visual board
+- Stockfish 18 Lite running locally in WebAssembly, with Apprentice, Duelist, and Master settings
+- Eighteen WebMCP tools connected to the same game state as the visual board
+- Hands-free multilingual AI voice control using Qwen3 ASR, GLM 5.3 Flash, and Kokoro 82M through OpenRouter
 - A local prototype leaderboard stored in the browser
 
 ## Test WebMCP
@@ -41,6 +44,8 @@ For Chrome testing, open `chrome://flags/#enable-webmcp-testing`, enable the fla
 The complete WebMCP surface has 18 tools covering lessons, every legal move, full game state, explanations, difficulty, playing either color, pause/resume, undo, resignation, agreed draws, saved games, custom FEN positions, camera views, and the local leaderboard.
 
 Every meaningful action is available through these tools, so a player can use voice with the browser agent to start lessons, inspect the position, change difficulty, start games, and play moves without typing or manually operating the board.
+
+The built-in voice button uses the same WebMCP tool definitions and handlers. Enable it once, speak naturally, and it automatically listens again after each spoken reply. The OpenRouter key is used only by the local Vite middleware or the Vercel function and is never included in the browser bundle.
 
 Tools: `list_lessons`, `start_lesson`, `make_move`, `get_game_state`, `explain_last_move`, `set_difficulty`, `get_leaderboard`, `set_game_paused`, `undo_last_turn`, `resign_game`, `offer_draw`, `save_game`, `list_saved_games`, `load_saved_game`, `delete_saved_game`, `load_custom_position`, `set_camera_view`, and `start_ranked_game`.
 
@@ -54,3 +59,5 @@ These ideas are intentionally deferred so the current prototype stays fast and d
 ## License
 
 [MIT](LICENSE)
+
+The bundled Stockfish.js engine is GPLv3; its license is copied beside the generated engine assets during installation and production builds.

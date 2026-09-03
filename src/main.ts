@@ -2,6 +2,8 @@ import './style.css'
 import { Chess, type Move, type Square } from 'chess.js'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { StockfishEngine } from './stockfish'
+import { VoiceController, type VoiceTool } from './voice'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -21,6 +23,8 @@ let playerColor: PlayerColor = 'white'
 let paused = false
 let outcome: string | null = null
 const savedGamesKey = 'wizard-chess-saved-games'
+const stockfish = new StockfishEngine()
+const gameTools: WebMCP.ModelContextTool[] = []
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="shell">
@@ -38,6 +42,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div id="status" class="status">Select a white piece, then its destination.</div>
         <div id="webmcp" class="small"></div>
         <div class="small">Local victories: <span id="wins">${rankedWins}</span></div>
+      </section>
+      <section class="card voice-card">
+        <h3>Voice control</h3>
+        <button id="voice-toggle" aria-pressed="false">Start voice</button>
+        <div id="voice-status" class="voice-status">Speak naturally in your language. No keyboard needed.</div>
+        <div id="voice-transcript" class="voice-transcript" aria-live="polite"></div>
+        <div class="small">Qwen ASR · GLM Flash · Kokoro voice</div>
       </section>
     </aside>
   </main>`
@@ -129,7 +140,7 @@ function playSanMove(notation: string) {
 }
 
 const values: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }
-function chooseAiMove() {
+function chooseFallbackMove() {
   const moves = game.moves({ verbose: true })
   const noise = difficulty === 'apprentice' ? 8 : difficulty === 'duelist' ? 3 : .5
   return moves.sort((a, b) => ((values[b.captured ?? ''] ?? 0) + Math.random() * noise) - ((values[a.captured ?? ''] ?? 0) + Math.random() * noise))[0]
@@ -137,11 +148,16 @@ function chooseAiMove() {
 async function maybeAiTurn() {
   const humanTurn = playerColor === 'white' ? 'w' : 'b'
   if (mode !== 'ranked' || game.turn() === humanTurn || game.isGameOver() || paused || outcome) return null
-  updateStatus(`${difficulty} is thinking…`)
-  return new Promise<Move | null>(resolve => window.setTimeout(() => {
-    const move = chooseAiMove()
-    resolve(move ? playMove(move.from, move.to, move.promotion) : null)
-  }, 450))
+  updateStatus(`${difficulty} Stockfish is thinking…`)
+  try {
+    const uci = await stockfish.bestMove(game.fen(), difficulty)
+    if (!uci) return null
+    return playMove(uci.slice(0, 2), uci.slice(2, 4), uci.slice(4) || 'q')
+  } catch (error) {
+    console.warn('Stockfish unavailable; using the lightweight fallback.', error)
+    const move = chooseFallbackMove()
+    return move ? playMove(move.from, move.to, move.promotion) : null
+  }
 }
 async function startGame(color: PlayerColor = playerColor) {
   playerColor = color
@@ -235,13 +251,9 @@ function setCameraView(view: CameraView) {
 function defineTool<const Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) { return tool }
 
 async function registerTools() {
-  const context = document.modelContext
   const indicator = document.querySelector<HTMLDivElement>('#webmcp')!
-  if (!context) { indicator.textContent = 'WebMCP is not available in this browser. The board still works normally.'; return }
   const emptySchema = { type: 'object', properties: {}, additionalProperties: false } as const
-  const controller = new AbortController()
-  const registrations: Promise<void>[] = []
-  const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => registrations.push(context.registerTool(tool, { signal: controller.signal }))
+  const addTool = <Schema extends object>(tool: WebMCP.ModelContextToolFromSchema<Schema>) => gameTools.push(tool as unknown as WebMCP.ModelContextTool)
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists every guided chess lesson with the lesson ID required by start_lesson.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(lessons) }))
   addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts the selected guided lesson and visibly loads its position on the shared 3D board.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { if (lesson_id !== lessons[0].id) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(lesson => lesson.id) }); setMode('learn'); paused = false; outcome = null; game.load('8/8/8/8/8/8/4P3/4K2k w - - 0 1'); lastMove = null; selected = null; renderPosition(); updateStatus('Lesson: move the pawn from e2 to e3 or e4.'); return textResult({ message: 'Pawn lesson started. Move e2 to e3 or e4.', state: gameState() }) } }))
   addTool(defineTool({ name: 'make_move', title: 'Play a chess move', description: 'Plays one legal move on the visible shared board. Accepts standard algebraic notation such as e4, Nf3, or O-O, and UCI notation such as e2e4 or e7e8q. In ranked mode, waits for the local opponent to reply before returning.', inputSchema: { type: 'object', properties: { move: { type: 'string', minLength: 2, maxLength: 7, description: 'A legal move in SAN or UCI notation.' } }, required: ['move'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ move: notation }) => {
@@ -369,6 +381,10 @@ async function registerTools() {
     if (chosenColor === 'black') setCameraView('black')
     return textResult({ message: `Ranked game started. You are ${chosenColor}.`, opponentOpeningMove: openingMove?.san ?? null, state: gameState() })
   } }))
+  const context = document.modelContext
+  if (!context) { indicator.textContent = 'WebMCP is not available in this browser. Built-in AI voice still controls the same game actions.'; return }
+  const controller = new AbortController()
+  const registrations = gameTools.map(tool => context.registerTool(tool, { signal: controller.signal }))
   try {
     await Promise.all(registrations)
     indicator.textContent = `WebMCP ready: ${registrations.length} tools registered. You can control the whole game by voice through your agent.`
@@ -380,6 +396,27 @@ async function registerTools() {
   }
 }
 
+function voiceToolDefinitions(): VoiceTool[] {
+  return gameTools.map(({ name, title, description, inputSchema }) => ({ name, title, description, inputSchema }))
+}
+
+async function executeGameTool(name: string, argumentsObject: Record<string, unknown>) {
+  const tool = gameTools.find(candidate => candidate.name === name)
+  if (!tool) return textResult({ error: `Unknown WebMCP tool: ${name}` })
+  return tool.execute(argumentsObject, { signal: new AbortController().signal })
+}
+
+function setupVoice() {
+  new VoiceController({
+    button: document.querySelector<HTMLButtonElement>('#voice-toggle')!,
+    status: document.querySelector<HTMLElement>('#voice-status')!,
+    transcript: document.querySelector<HTMLElement>('#voice-transcript')!,
+    getState: gameState,
+    getTools: voiceToolDefinitions,
+    executeTool: executeGameTool,
+  })
+}
+
 function resize() {
   const { clientWidth, clientHeight } = canvas
   renderer.setSize(clientWidth, clientHeight, false)
@@ -387,4 +424,10 @@ function resize() {
   camera.updateProjectionMatrix()
 }
 function animate() { resize(); controls.update(); renderer.render(scene, camera); requestAnimationFrame(animate) }
-renderPosition(); void registerTools(); animate()
+async function initialize() {
+  renderPosition()
+  await registerTools()
+  setupVoice()
+  animate()
+}
+void initialize()

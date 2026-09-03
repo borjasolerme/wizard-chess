@@ -19,4 +19,12 @@ button:hover, button.active { background: #6d5839; }
 select { width: 100%; padding: .55rem; color: inherit; background: #24242d; border: 1px solid #665a48; }
 .status { min-height: 3rem; color: #d4c7ad; line-height: 1.45; }
 .small { color: #9d978c; font: .85rem system-ui, sans-serif; }
+.voice-card { display: grid; gap: .7rem; }
+.voice-card h3 { margin-bottom: 0; }
+.voice-status, .voice-transcript { color: #d4c7ad; font: .9rem/1.45 system-ui, sans-serif; }
+.voice-status[data-state="listening"] { color: #b9d9aa; }
+.voice-status[data-state="thinking"] { color: #e0c58d; }
+.voice-status[data-state="speaking"] { color: #c5b4e8; }
+.voice-transcript { min-height: 2.7rem; white-space: pre-line; color: #aaa397; }
+#voice-toggle.active { border-color: #bfcf9b; background: #4e5b38; }
 @media (max-width: 800px) { .shell { grid-template-columns: 1fr; } .panel { border-left: 0; border-top: 1px solid #413a30; } .stage, #board { min-height: 58vh; } }
