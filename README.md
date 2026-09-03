@@ -10,12 +10,10 @@ You need Node.js 20.19 or newer.
 
 ```bash
 npm install
-cp .env.example .env.local
-# Add your OpenRouter key to .env.local
 npm run dev
 ```
 
-Open the local URL printed by Vite. For a production check:
+Open the local URL printed by Vite. Add an OpenRouter API key from the in-game Settings menu to enable voice. The key stays in that browser and can be removed from Settings. For a production check:
 
 ```bash
 npm run build
@@ -45,7 +43,7 @@ The complete WebMCP surface has 18 tools covering lessons, every legal move, ful
 
 Every meaningful action is available through these tools, so a player can use voice with the browser agent to start lessons, inspect the position, change difficulty, start games, and play moves without typing or manually operating the board.
 
-The built-in voice button uses the same WebMCP tool definitions and handlers. Enable it once, speak naturally, and it automatically listens again after each spoken reply. The OpenRouter key is used only by the local Vite middleware or the Vercel function and is never included in the browser bundle.
+The built-in voice button uses the same WebMCP tool definitions and handlers. Enable it once, speak naturally, and it automatically listens again after each spoken reply. A key saved in Settings stays in browser storage and is sent through the app's voice endpoint only when voice is used. Deployments may instead provide `OPENROUTER_API_KEY` on the server as a shared fallback.
 
 Tools: `list_lessons`, `start_lesson`, `make_move`, `get_game_state`, `explain_last_move`, `set_difficulty`, `get_leaderboard`, `set_game_paused`, `undo_last_turn`, `resign_game`, `offer_draw`, `save_game`, `list_saved_games`, `load_saved_game`, `delete_saved_game`, `load_custom_position`, `set_camera_view`, and `start_ranked_game`.
 

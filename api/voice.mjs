@@ -11,7 +11,8 @@ async function readBody(request) {
 export default async function handler(request, response) {
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed.' })
   try {
-    const result = await handleVoice(await readBody(request))
+    const requestKey = request.headers['x-openrouter-api-key']
+    const result = await handleVoice(await readBody(request), typeof requestKey === 'string' ? requestKey : undefined)
     response.statusCode = result.status
     if (result.bytes) {
       response.setHeader('Content-Type', result.contentType)

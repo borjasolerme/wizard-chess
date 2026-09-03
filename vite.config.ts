@@ -13,7 +13,8 @@ function voiceApi(apiKey: string): Plugin {
         try {
           let raw = ''
           for await (const chunk of request) raw += chunk
-          const result = await handleVoice(raw ? JSON.parse(raw) : {}, apiKey)
+          const requestKey = request.headers['x-openrouter-api-key']
+          const result = await handleVoice(raw ? JSON.parse(raw) : {}, typeof requestKey === 'string' ? requestKey : apiKey)
           response.statusCode = result.status
           response.setHeader('Content-Type', result.contentType || 'application/json')
           response.end(result.bytes ? Buffer.from(result.bytes) : JSON.stringify(result.json))

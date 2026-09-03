@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { StockfishEngine } from './stockfish'
 import { VoiceController, type VoiceTool } from './voice'
+import { normalizeOpenRouterKey, openRouterKeyStorageKey } from './api-key'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -62,9 +63,29 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <summary aria-label="More options">•••</summary>
         <div class="more-popover">
           <button id="restart-game">New game</button>
+          <button id="open-settings">Settings</button>
           <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
         </div>
       </details>
+
+      <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+        <form id="settings-form">
+          <div class="settings-heading">
+            <div><span class="eyebrow">AI provider</span><h2 id="settings-title">Settings</h2></div>
+            <button id="close-settings" class="close-settings" type="button" aria-label="Close settings">×</button>
+          </div>
+          <div class="provider-row"><span>OpenRouter</span><span id="key-state"></span></div>
+          <label for="openrouter-key">API key</label>
+          <input id="openrouter-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="sk-or-v1-…">
+          <p class="settings-note">Saved in this browser and sent only with voice requests.</p>
+          <p id="settings-status" class="settings-status" aria-live="polite"></p>
+          <div class="settings-actions">
+            <button id="remove-key" class="secondary-action" type="button">Remove key</button>
+            <button class="primary-action" type="submit">Save</button>
+          </div>
+          <a class="get-key" href="https://openrouter.ai/settings/keys" target="_blank" rel="noreferrer">Get an OpenRouter key ↗</a>
+        </form>
+      </dialog>
     </section>
   </main>`
 
@@ -253,6 +274,48 @@ document.querySelector('#start-lesson')!.addEventListener('click', () => { setMo
 document.querySelector('#new-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector('#restart-game')!.addEventListener('click', () => { setMode('ranked'); void startGame() })
 document.querySelector<HTMLSelectElement>('#difficulty')!.addEventListener('change', event => { difficulty = (event.target as HTMLSelectElement).value as Difficulty; updateStatus(`Difficulty set to ${difficulty}.`) })
+
+const settingsDialog = document.querySelector<HTMLDialogElement>('#settings-dialog')!
+const settingsForm = document.querySelector<HTMLFormElement>('#settings-form')!
+const keyInput = document.querySelector<HTMLInputElement>('#openrouter-key')!
+const keyState = document.querySelector<HTMLElement>('#key-state')!
+const settingsStatus = document.querySelector<HTMLElement>('#settings-status')!
+const removeKeyButton = document.querySelector<HTMLButtonElement>('#remove-key')!
+
+function openRouterKey() { return localStorage.getItem(openRouterKeyStorageKey) ?? '' }
+function renderKeyState() {
+  const saved = Boolean(openRouterKey())
+  keyState.textContent = saved ? 'Saved' : 'Not set'
+  keyState.dataset.saved = String(saved)
+  removeKeyButton.hidden = !saved
+}
+document.querySelector('#open-settings')!.addEventListener('click', () => {
+  document.querySelector('.more-menu')!.removeAttribute('open')
+  keyInput.value = openRouterKey()
+  settingsStatus.textContent = ''
+  renderKeyState()
+  settingsDialog.showModal()
+})
+document.querySelector('#close-settings')!.addEventListener('click', () => settingsDialog.close())
+settingsForm.addEventListener('submit', event => {
+  event.preventDefault()
+  const key = normalizeOpenRouterKey(keyInput.value)
+  if (!key) {
+    settingsStatus.textContent = 'Enter a valid OpenRouter key.'
+    return
+  }
+  localStorage.setItem(openRouterKeyStorageKey, key)
+  keyInput.value = key
+  settingsStatus.textContent = 'Saved. Voice is ready.'
+  renderKeyState()
+})
+removeKeyButton.addEventListener('click', () => {
+  localStorage.removeItem(openRouterKeyStorageKey)
+  keyInput.value = ''
+  settingsStatus.textContent = 'Key removed.'
+  renderKeyState()
+})
+
 function setMode(next: Mode) {
   mode = next
   document.querySelector('.shell')!.classList.remove('playing', 'lesson-active')
@@ -469,6 +532,7 @@ function setupVoice() {
     transcript: document.querySelector<HTMLElement>('#voice-transcript')!,
     getState: gameState,
     getTools: voiceToolDefinitions,
+    getApiKey: openRouterKey,
     executeTool: executeGameTool,
   })
 }

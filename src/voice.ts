@@ -1,4 +1,5 @@
 import { audioFormatFromMime, blobToBase64, voiceLanguage } from './voice-utils'
+import { voiceRequestHeaders } from './api-key'
 
 export type VoiceTool = {
   name: string
@@ -13,6 +14,7 @@ type VoiceControllerOptions = {
   transcript: HTMLElement
   getState: () => unknown
   getTools: () => VoiceTool[]
+  getApiKey: () => string
   executeTool: (name: string, argumentsObject: Record<string, unknown>) => Promise<unknown>
 }
 
@@ -25,10 +27,10 @@ type Interpretation = {
 
 const recorderTypes = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus']
 
-async function postJson<T>(body: Record<string, unknown>): Promise<T> {
+async function postJson<T>(body: Record<string, unknown>, apiKey: string): Promise<T> {
   const response = await fetch('/api/voice', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: voiceRequestHeaders(apiKey),
     body: JSON.stringify(body),
   })
   if (!response.ok) {
@@ -75,9 +77,9 @@ export class VoiceController {
       return
     }
     try {
-      const { configured } = await postJson<{ configured: boolean }>({ action: 'status' })
+      const { configured } = await postJson<{ configured: boolean }>({ action: 'status' }, this.options.getApiKey())
       if (!configured) {
-        this.setStatus('Add OPENROUTER_API_KEY to .env.local, then restart the app.')
+        this.setStatus('Add an OpenRouter key in Settings.')
         return
       }
     } catch (error) {
@@ -161,7 +163,7 @@ export class VoiceController {
       action: 'transcribe',
       audio: await blobToBase64(blob),
       format: audioFormatFromMime(mime),
-    })
+    }, this.options.getApiKey())
     if (!text.trim()) return
     this.options.transcript.textContent = `You: ${text}`
 
@@ -171,7 +173,7 @@ export class VoiceController {
       transcript: text,
       state: this.options.getState(),
       tools,
-    })
+    }, this.options.getApiKey())
 
     let result: unknown = null
     if (interpretation.tool_name !== 'none') {
@@ -191,7 +193,7 @@ export class VoiceController {
           language: interpretation.language,
           tool: interpretation.tool_name,
           result,
-        })
+        }, this.options.getApiKey())
     this.options.transcript.textContent = `You: ${text}\nWizard: ${response.speech}`
     await this.speak(response.speech, response.language)
   }
@@ -200,7 +202,7 @@ export class VoiceController {
     this.setStatus('Speaking…', 'speaking')
     const response = await fetch('/api/voice', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: voiceRequestHeaders(this.options.getApiKey()),
       body: JSON.stringify({ action: 'speak', text, language: voiceLanguage(language) }),
     })
     if (!response.ok) {

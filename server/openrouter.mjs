@@ -63,7 +63,7 @@ function sanitizeTools(tools) {
 
 export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY) {
   if (body?.action === 'status') return { status: 200, json: { configured: Boolean(apiKey), models } }
-  if (!apiKey) return { status: 503, json: { error: 'Voice AI is not configured. Add OPENROUTER_API_KEY to .env.local and restart the app.' } }
+  if (!apiKey) return { status: 503, json: { error: 'Voice AI is not configured. Add an OpenRouter key in Settings.' } }
   if (!body || typeof body !== 'object') return { status: 400, json: { error: 'Invalid request.' } }
 
   if (body.action === 'transcribe') {
