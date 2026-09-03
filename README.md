@@ -6,6 +6,8 @@ Choose Academy to learn the rules, Mentor game to get advice while playing, or B
 
 Built for the [OpenAI WebMCP Challenge](https://openai.com/webmcp-challenge/) on [Devpost](https://webmcp.devpost.com/).
 
+**Play online:** [wizard-chess-kohl.vercel.app](https://wizard-chess-kohl.vercel.app/)
+
 ![Choose Academy, Mentor game, or Battle in Wizard Chess](docs/screenshots/path-selection.jpg)
 
 ## Why WebMCP fits chess
