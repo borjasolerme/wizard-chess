@@ -62,4 +62,29 @@ describe('voice understanding', () => {
     expect(request.messages[0].content).toContain('lead with the recommended move')
     expect(request.messages[0].content).toContain('Do not praise the previous move')
   })
+
+  it('keeps the full WebMCP surface available for voice navigation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        transcript: 'Open settings',
+        language: 'en',
+        tool_name: 'open_settings',
+        arguments_json: '{}',
+        speech: 'Opening settings.',
+      }) } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const tools = Array.from({ length: 34 }, (_, index) => ({
+      name: index === 33 ? 'open_settings' : `tool_${index}`,
+      description: 'Available action.',
+      inputSchema: { type: 'object', properties: {} },
+    }))
+
+    await handleVoice({ action: 'understand', audio: 'a'.repeat(500), format: 'webm', state: {}, tools }, 'test-key')
+
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body)
+    const context = JSON.parse(request.messages[1].content[0].text)
+    expect(context.availableWebMcpTools).toHaveLength(34)
+    expect(request.messages[0].content).toContain('interface navigation')
+  })
 })

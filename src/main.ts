@@ -782,6 +782,35 @@ const progressDialog = document.querySelector<HTMLDialogElement>('#progress-dial
 const mainMenuDialog = document.querySelector<HTMLDialogElement>('#main-menu-dialog')!
 const mainMenuForm = document.querySelector<HTMLFormElement>('#main-menu-form')!
 
+function visibleDialog() {
+  if (settingsDialog.open) return 'settings'
+  if (progressDialog.open) return 'progress'
+  if (mainMenuDialog.open) return 'main-menu-confirmation'
+  return null
+}
+
+function closeDialogs() {
+  if (settingsDialog.open) settingsDialog.close()
+  if (progressDialog.open) progressDialog.close()
+  if (mainMenuDialog.open) mainMenuDialog.close()
+}
+
+function openSettings() {
+  closeDialogs()
+  document.querySelector('.more-menu')!.removeAttribute('open')
+  keyInput.value = openRouterKey()
+  settingsStatus.textContent = ''
+  renderKeyState()
+  settingsDialog.showModal()
+}
+
+function openProgress() {
+  closeDialogs()
+  document.querySelector('.more-menu')!.removeAttribute('open')
+  renderProgress()
+  progressDialog.showModal()
+}
+
 function openRouterKey() { return localStorage.getItem(openRouterKeyStorageKey) ?? '' }
 function renderKeyState() {
   const saved = Boolean(openRouterKey())
@@ -789,13 +818,7 @@ function renderKeyState() {
   keyState.dataset.saved = String(saved)
   removeKeyButton.hidden = !saved
 }
-document.querySelector('#open-settings')!.addEventListener('click', () => {
-  document.querySelector('.more-menu')!.removeAttribute('open')
-  keyInput.value = openRouterKey()
-  settingsStatus.textContent = ''
-  renderKeyState()
-  settingsDialog.showModal()
-})
+document.querySelector('#open-settings')!.addEventListener('click', openSettings)
 document.querySelector('#close-settings')!.addEventListener('click', () => settingsDialog.close())
 document.querySelector('#open-main-menu')!.addEventListener('click', () => {
   document.querySelector('.more-menu')!.removeAttribute('open')
@@ -950,11 +973,7 @@ function stepReplay(change: number) {
   renderReplay()
 }
 
-document.querySelector('#open-progress')!.addEventListener('click', () => {
-  document.querySelector('.more-menu')!.removeAttribute('open')
-  renderProgress()
-  progressDialog.showModal()
-})
+document.querySelector('#open-progress')!.addEventListener('click', openProgress)
 document.querySelector('#close-progress')!.addEventListener('click', () => progressDialog.close())
 document.querySelector('#replay-previous')!.addEventListener('click', () => stepReplay(-1))
 document.querySelector('#replay-next')!.addEventListener('click', () => stepReplay(1))
@@ -1010,6 +1029,7 @@ function prepareRankedGame(coached: boolean) {
 }
 
 function returnToMainMenu() {
+  closeDialogs()
   game = new Chess()
   mode = 'learn'
   phase = 'entry'
@@ -1038,6 +1058,7 @@ function returnToMainMenu() {
 
 function gameState() {
   return {
+    surface: visibleDialog() ?? (phase === 'entry' ? 'main-menu' : phase === 'onboarding' ? 'onboarding' : phase === 'setup' ? mode === 'learn' ? 'academy' : mentorEnabled ? 'mentor' : 'battle' : phase),
     mode: phase === 'entry' || phase === 'onboarding' ? null : mode,
     phase,
     difficulty,
@@ -1121,9 +1142,40 @@ async function registerTools() {
   addTool(defineTool({ name: 'advance_onboarding', title: 'Continue the introduction', description: 'Moves the visible one-time onboarding to its next screen when the player says next, continue, or move to the next step.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => activeOnboarding ? textResult({ message: advanceOnboarding(), state: gameState() }) : textResult({ error: 'No introduction is open.', state: gameState() }) }))
   addTool(defineTool({ name: 'get_onboarding_guidance', title: 'Repeat onboarding guidance', description: 'Repeats and narrates the current onboarding screen when the player says guide me, help me, or repeat that.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult({ message: onboardingGuidance(), state: gameState() }) }))
   addTool(defineTool({ name: 'return_to_main_menu', title: 'Return to the main menu', description: 'Ends the current lesson, game, onboarding, or replay and returns to path selection. Use only when the player asks to leave the current session.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
-    if (!canReturnToMainMenu(phase)) return textResult({ message: 'The main menu is already open.', state: gameState() })
+    if (!canReturnToMainMenu(phase) && !visibleDialog()) return textResult({ message: 'The main menu is already open.', state: gameState() })
     returnToMainMenu()
     return textResult({ message: 'Returned to the main menu.', state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'open_settings', title: 'Open settings', description: 'Opens the Settings dialog. Use when the player says open settings, show settings, or asks where to add their OpenRouter key.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    openSettings()
+    return textResult({ message: 'Settings opened.', apiKeyConfigured: Boolean(openRouterKey()), state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'open_progress', title: 'Open progress', description: 'Opens the visible Progress dialog with Elo rating, academy lessons, trophies, and game history. Use when the player says show or open progress.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    openProgress()
+    return textResult({ message: 'Progress opened.', progress: progressSnapshot(), state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'open_game_path', title: 'Open a game path', description: 'Navigates to Academy, Mentor game, or Battle setup without starting a move. Use when the player asks to open, choose, or go to one of the three paths.', inputSchema: { type: 'object', properties: { path: { type: 'string', enum: ['academy', 'mentor', 'battle'], description: 'The destination path.' } }, required: ['path'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ path }) => {
+    if (path !== 'academy' && path !== 'mentor' && path !== 'battle') return textResult({ error: 'Path must be academy, mentor, or battle.', state: gameState() })
+    closeDialogs()
+    if (phase !== 'entry') returnToMainMenu()
+    choosePath(path)
+    return textResult({ message: activeOnboarding ? onboardingGuidance() : `${path === 'academy' ? 'Academy' : path === 'mentor' ? 'Mentor game' : 'Battle'} setup opened.`, state: gameState() })
+  } }))
+  addTool(defineTool({ name: 'navigate_back', title: 'Go back', description: 'Navigates back from the current interface: closes Settings, Progress, or a confirmation; steps back through onboarding; or returns a selected path to the main menu.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
+    const dialog = visibleDialog()
+    if (dialog) {
+      closeDialogs()
+      return textResult({ message: `${dialog === 'main-menu-confirmation' ? 'Confirmation' : dialog === 'settings' ? 'Settings' : 'Progress'} closed.`, state: gameState() })
+    }
+    if (activeOnboarding) {
+      leaveOnboarding()
+      return textResult({ message: activeOnboarding ? onboardingGuidance() : 'Returned to the main menu.', state: gameState() })
+    }
+    if (canReturnToMainMenu(phase)) {
+      returnToMainMenu()
+      return textResult({ message: 'Returned to the main menu.', state: gameState() })
+    }
+    return textResult({ message: 'The main menu is already open.', state: gameState() })
   } }))
   addTool(defineTool({ name: 'list_lessons', title: 'List chess lessons', description: 'Lists the academy levels, lessons, unlock state, and completion state.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(curriculum.map(level => ({ ...level, lessons: level.lessons.map(lesson => ({ id: lesson.id, title: lesson.title, description: lesson.description, trophy: lesson.trophy, unlocked: isLessonUnlocked(lesson.id, progress.completedLessonIds), completed: progress.completedLessonIds.includes(lesson.id) })) }))) }))
   addTool(defineTool({ name: 'start_lesson', title: 'Start a chess lesson', description: 'Starts any unlocked academy lesson and loads its first exercise on the shared 3D board. Opens the one-time Academy introduction first when needed.', inputSchema: { type: 'object', properties: { lesson_id: { type: 'string', enum: ['pawn-basics', 'knight-jumps', 'bishop-lines', 'knight-fork', 'castle-safely', 'mate-in-one'], description: 'Lesson ID returned by list_lessons.' } }, required: ['lesson_id'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ lesson_id }) => { const lesson = lessonById(lesson_id); if (!lesson) return textResult({ error: 'Unknown lesson.', availableLessons: lessons.map(candidate => candidate.id) }); if (!isLessonUnlocked(lesson.id, progress.completedLessonIds)) return textResult({ error: 'Complete the previous lesson to unlock this one.', state: gameState() }); if (!completedOnboarding.includes('academy')) { showOnboarding('academy'); return textResult({ message: onboardingGuidance(), state: gameState() }) } beginLesson(lesson); return textResult({ message: lesson.steps[0].instruction, state: gameState() }) } }))
