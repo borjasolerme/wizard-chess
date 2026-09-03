@@ -28,13 +28,13 @@ describe('voice understanding', () => {
     expect(result.json.transcript).toBe('Move the knight to f3')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(request.model).toBe('google/gemini-3.5-flash-lite')
+    expect(request.model).toBe('openai/gpt-audio-mini')
     expect(request.provider).toEqual({ sort: 'latency' })
     expect(request.messages[0].content).toContain('must not invent unseen result data')
     expect(request.messages[1].content[1]).toEqual({ type: 'input_audio', input_audio: { data: 'a'.repeat(500), format: 'webm' } })
   })
 
-  it('speaks with the British male wizard voice in English', async () => {
+  it('speaks with the OpenAI male wizard voice', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), {
       status: 200,
       headers: { 'Content-Type': 'audio/mpeg' },
@@ -45,7 +45,8 @@ describe('voice understanding', () => {
 
     expect(result.status).toBe(200)
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
-    expect(request.voice).toBe('bm_george')
+    expect(request.model).toBe('openai/gpt-4o-mini-tts-2025-12-15')
+    expect(request.voice).toBe('onyx')
   })
 
   it('answers recommendation questions with the current move instead of generic praise', async () => {

@@ -32,22 +32,22 @@ The player can ask for a move, hear the reason, accept or ignore the advice, and
 
 ```text
 ChatGPT browser ── WebMCP ────────────┐
-Built-in voice ── Gemini + Kokoro ────┼── game tools ── chess.js / Stockfish ── 3D board
+Built-in voice ── OpenAI GPT Audio ───┼── game tools ── chess.js / Stockfish ── 3D board
 Mouse or touch ────────────────────────┘
 ```
 
 There are three ways into one game state:
 
 1. **A browser agent** discovers 36 tools registered with `document.modelContext.registerTool()`.
-2. **Built-in voice** records a request, sends it to the local `/api/voice` endpoint, and lets Gemini choose from the same tool definitions. The selected handler runs locally, then Kokoro speaks the response.
+2. **Built-in voice** records a request, sends it to the local `/api/voice` endpoint, and lets GPT Audio choose from the same tool definitions. The selected handler runs locally, then OpenAI TTS speaks the response.
 3. **Mouse or touch** calls those same game actions from the visible interface.
 
 `chess.js` owns legal move validation. Stockfish 18 Lite runs in a Web Worker for opponent moves and analysis. Three.js renders the board, procedural pieces, spell trails, capture sparks, and camera movement.
 
 The built-in voice loop uses:
 
-- `google/gemini-3.5-flash-lite` through OpenRouter for audio understanding, tool selection, and concise answers
-- `hexgrad/kokoro-82m` through OpenRouter for spoken responses
+- `openai/gpt-audio-mini` through OpenRouter for audio understanding, tool selection, and concise answers
+- `openai/gpt-4o-mini-tts-2025-12-15` through OpenRouter for spoken responses with the `onyx` voice
 
 Voice starts automatically when the page has an OpenRouter key or a configured server fallback. A browser may still ask for microphone permission once. The game then listens again after each spoken reply. The player can navigate the whole interface, start lessons and matches, move pieces, request guidance, pause, undo, save, change the camera, and replay previous games.
 
@@ -55,7 +55,7 @@ Voice starts automatically when the page has an OpenRouter key or a configured s
 
 The voice controller keeps one microphone stream and analyser alive for the session instead of rebuilding them after every sentence. Each utterance takes this path:
 
-1. Gemini transcribes the audio and chooses one of the same WebMCP actions exposed to browser agents.
+1. GPT Audio Mini transcribes the audio and chooses one of the same WebMCP actions exposed to browser agents.
 2. The selected action runs against the visible game state.
 3. Routine successful actions use the acknowledgement from the first response and go directly to speech. Data answers and errors receive a second, result-grounded summary before speech.
 

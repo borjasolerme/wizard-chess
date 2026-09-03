@@ -1,12 +1,9 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1'
 const models = {
-  understanding: 'google/gemini-3.5-flash-lite',
-  speech: 'hexgrad/kokoro-82m',
+  understanding: 'openai/gpt-audio-mini',
+  speech: 'openai/gpt-4o-mini-tts-2025-12-15',
 }
-const voices = {
-  en: 'bm_george', es: 'em_alex', fr: 'ff_siwis', hi: 'hm_omega',
-  it: 'im_nicola', ja: 'jm_kumo', pt: 'pm_alex', zh: 'zm_yunxi',
-}
+const speechVoice = 'onyx'
 
 function headers(apiKey) {
   return {
@@ -107,12 +104,11 @@ export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY)
 
   if (body.action === 'speak') {
     const text = String(body.text || '').trim().slice(0, 600)
-    const language = Object.hasOwn(voices, body.language) ? body.language : 'en'
     if (!text) return { status: 400, json: { error: 'Speech text is required.' } }
     const response = await openRouter('/audio/speech', apiKey, {
       model: models.speech,
       input: text,
-      voice: voices[language],
+      voice: speechVoice,
       response_format: 'mp3',
     })
     return { status: 200, bytes: new Uint8Array(await response.arrayBuffer()), contentType: response.headers.get('content-type') || 'audio/mpeg' }

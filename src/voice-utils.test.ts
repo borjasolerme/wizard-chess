@@ -10,7 +10,7 @@ describe('audioFormatFromMime', () => {
 })
 
 describe('voiceLanguage', () => {
-  it('keeps Kokoro-supported languages and falls back to English', () => {
+  it('keeps supported voice languages and falls back to English', () => {
     expect(voiceLanguage('it-IT')).toBe('it')
     expect(voiceLanguage('pt-BR')).toBe('pt')
     expect(voiceLanguage('de')).toBe('en')
