@@ -11,6 +11,7 @@ import { parseProgress, recordGame, recordLesson, trophies, type GameHistory, ty
 import { assessMove, createPostGameReview, inferMentorTier, rememberInsight, type MentorInsight, type PostGameReview } from './mentor'
 import { completeOnboarding, onboardingSteps, parseCompletedOnboarding, type OnboardingPath } from './onboarding'
 import { GameSounds, moveSoundCue } from './sound'
+import { gameScore, opponentRatings, updateElo } from './rating'
 
 type Difficulty = 'apprentice' | 'duelist' | 'master'
 type Mode = 'learn' | 'ranked'
@@ -81,7 +82,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <span id="game-path" class="eyebrow">Mentor game</span>
         <h2 id="opponent-heading">Choose your opponent</h2>
         <label for="difficulty">Strength</label>
-        <select id="difficulty"><option value="apprentice">Apprentice</option><option value="duelist">Duelist</option><option value="master">Master</option></select>
+        <select id="difficulty"><option value="apprentice">Apprentice · 1320</option><option value="duelist">Duelist · 1750</option><option value="master">Master · 2400</option></select>
         <button id="new-game" class="primary-action">Begin game</button>
       </section>
 
@@ -89,7 +90,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <span class="eyebrow">The mentor's review</span>
         <h2 id="review-title">Battle complete</h2>
         <p id="review-summary"></p>
-        <div class="review-notes"><span>Strength</span><strong id="review-strength"></strong><span>Next focus</span><strong id="review-focus"></strong></div>
+        <div class="review-notes"><span>Strength</span><strong id="review-strength"></strong><span>Next focus</span><strong id="review-focus"></strong><span>Rating</span><strong id="review-rating"></strong></div>
         <button id="practice-focus" class="primary-action">Practise this skill</button>
         <button id="play-again" class="secondary-action">Play again</button>
       </section>
@@ -150,6 +151,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <button id="restart-game" hidden>New game</button>
           <button id="open-progress">Progress</button>
           <button id="open-settings">Settings</button>
+          <div class="meta-row"><span>Rating</span><strong id="rating">${progress.rating}</strong></div>
           <div class="meta-row"><span>Victories</span><strong id="wins">${rankedWins}</strong></div>
         </div>
       </details>
@@ -178,7 +180,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <div><span class="eyebrow">Your journey</span><h2 id="progress-title">Progress</h2></div>
           <button id="close-progress" class="close-settings" type="button" aria-label="Close progress">×</button>
         </div>
-        <div class="progress-summary"><strong id="lesson-count"></strong><span>academy</span><strong id="win-count"></strong><span>victories</span></div>
+        <div class="progress-summary"><strong id="elo-rating"></strong><span>rating</span><strong id="lesson-count"></strong><span>academy</span><strong id="win-count"></strong><span>victories</span></div>
         <section><h3>Academy</h3><div id="academy-list" class="academy-list"></div></section>
         <section><h3>Trophies</h3><div id="trophy-list" class="trophy-list"></div></section>
         <section><h3>History</h3><div id="history-list" class="history-list"></div></section>
@@ -410,7 +412,10 @@ function persistProgress() {
 function recordCurrentGame(result: string) {
   if (gameHistoryRecorded || mode !== 'ranked') return
   postGameReview = createPostGameReview(currentGameInsights, result, progress.completedLessonIds)
-  progress = recordGame(progress, {
+  const ratingBefore = progress.rating
+  const opponentRating = opponentRatings[difficulty]
+  const ratingUpdate = updateElo(ratingBefore, opponentRating, gameScore(result, playerColor))
+  progress = recordGame({ ...progress, rating: ratingUpdate.rating }, {
     id: historyId('game'),
     result,
     difficulty,
@@ -418,11 +423,16 @@ function recordCurrentGame(result: string) {
     moves: game.history(),
     coached: mentorEnabled,
     review: postGameReview,
+    ratingBefore,
+    ratingAfter: ratingUpdate.rating,
+    ratingChange: ratingUpdate.change,
+    opponentRating,
     completedAt: new Date().toISOString(),
   })
   gameHistoryRecorded = true
   persistProgress()
-  renderPostGameReview(result)
+  document.querySelector('#rating')!.textContent = String(progress.rating)
+  renderPostGameReview(result, ratingUpdate.change)
 }
 function renderLessonSetup(lesson = nextLesson(progress.completedLessonIds)) {
   currentLesson = lesson
@@ -578,12 +588,13 @@ async function completePlayerTurn(move: Move, beforeFen: string) {
   }
 }
 
-function renderPostGameReview(result: string) {
+function renderPostGameReview(result: string, ratingChange: number) {
   if (!postGameReview) return
   document.querySelector('#review-title')!.textContent = result
   document.querySelector('#review-summary')!.textContent = postGameReview.summary
   document.querySelector('#review-strength')!.textContent = postGameReview.strength
   document.querySelector('#review-focus')!.textContent = postGameReview.focus
+  document.querySelector('#review-rating')!.textContent = `${progress.rating} (${ratingChange >= 0 ? '+' : ''}${ratingChange})`
   document.querySelector<HTMLElement>('#post-game')!.hidden = false
   syncProgression()
 }
@@ -776,6 +787,7 @@ function actionButton(label: string, action: () => void, disabled = false) {
   return button
 }
 function renderProgress() {
+  document.querySelector('#elo-rating')!.textContent = String(progress.rating)
   document.querySelector('#lesson-count')!.textContent = `${progress.completedLessonIds.length}/${lessons.length}`
   document.querySelector('#win-count')!.textContent = String(rankedWins)
   const academyList = document.querySelector<HTMLElement>('#academy-list')!
@@ -844,7 +856,8 @@ function renderProgress() {
     const title = document.createElement('strong')
     title.textContent = entry.type === 'lesson' ? entry.title : entry.result
     const meta = document.createElement('span')
-    meta.textContent = `${entry.type === 'lesson' ? 'Lesson' : `${entry.difficulty} · ${entry.moves.length} moves${entry.review ? ` · Focus: ${entry.review.focus}` : ''}`} · ${new Date(entry.completedAt).toLocaleDateString()}`
+    const ratingResult = entry.type === 'game' && typeof entry.ratingChange === 'number' ? ` · Elo ${entry.ratingChange >= 0 ? '+' : ''}${entry.ratingChange}` : ''
+    meta.textContent = `${entry.type === 'lesson' ? 'Lesson' : `${entry.difficulty} · ${entry.moves.length} moves${ratingResult}${entry.review ? ` · Focus: ${entry.review.focus}` : ''}`} · ${new Date(entry.completedAt).toLocaleDateString()}`
     copy.append(title, meta)
     row.append(copy, actionButton('Replay', () => {
       progressDialog.close()
@@ -977,6 +990,8 @@ function gameState() {
     mentor: mode === 'ranked' ? { enabled: mentorEnabled, tier: inferMentorTier(progress.completedLessonIds.length), insight: mentorInsight, review: postGameReview } : null,
     legalMoves: phase !== 'active' ? [] : lessonRunning ? currentLesson.steps[lessonStep].moves : game.moves(),
     localVictories: rankedWins,
+    rating: progress.rating,
+    opponentRating: opponentRatings[difficulty],
   }
 }
 
@@ -985,6 +1000,7 @@ function progressSnapshot() {
     completedLessons: progress.completedLessonIds.length,
     totalLessons: lessons.length,
     rankedWins,
+    rating: progress.rating,
     levels: curriculum.map(level => ({
       id: level.id,
       title: level.title,
@@ -1049,7 +1065,7 @@ async function registerTools() {
       const opponentMove = await completePlayerTurn(move, beforeFen)
       return textResult({ played: move.san, opponentReply: opponentMove?.san ?? null, mentor: mentorEnabled ? mentorInsight : null, state: gameState() })
     } }))
-  addTool(defineTool({ name: 'get_game_state', title: 'Inspect the chess game', description: 'Returns the complete current game state needed to coach or play: mode, difficulty, position, side to move, checks, last move, legal moves, and local victories.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(gameState()) }))
+  addTool(defineTool({ name: 'get_game_state', title: 'Inspect the chess game', description: 'Returns the complete current game state needed to coach or play: mode, difficulty, position, side to move, checks, last move, legal moves, player rating, and opponent rating.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(gameState()) }))
   addTool(defineTool({ name: 'explain_last_move', title: 'Explain the last move', description: 'Explains the most recent move on the shared board in plain language.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(describeMove(lastMove)) }))
   addTool(defineTool({ name: 'get_mentor_guidance', title: 'Ask the chess mentor', description: 'Returns the current Stockfish-grounded move grade, explanation, next plan, skill tier, and remembered learning themes.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult({ enabled: mentorEnabled, tier: inferMentorTier(progress.completedLessonIds.length), insight: mentorInsight, memory: progress.mentorMemory }) }))
   addTool(defineTool({ name: 'set_mentor_enabled', title: 'Turn chess mentor on or off', description: 'Enables or disables quiet move analysis for the current or next computer game.', inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', description: 'True for on-demand guidance and a post-game review; false for a quick battle.' } }, required: ['enabled'], additionalProperties: false } as const, annotations: { readOnlyHint: false }, execute: async ({ enabled }) => {
@@ -1173,7 +1189,7 @@ async function registerTools() {
     updateStatus('Custom position loaded for analysis.')
     return textResult({ message: 'Custom position loaded.', state: gameState() })
   } }))
-  addTool(defineTool({ name: 'get_progress', title: 'View academy progress and trophies', description: 'Returns every level and lesson with unlock and completion status, plus earned trophies and ranked victories.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(progressSnapshot()) }))
+  addTool(defineTool({ name: 'get_progress', title: 'View rating and academy progress', description: 'Returns the player’s current Elo rating, every lesson with unlock and completion status, earned trophies, and ranked victories.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(progressSnapshot()) }))
   addTool(defineTool({ name: 'get_post_game_review', title: 'Review the completed game', description: 'Returns the mentor recap, strongest theme, next focus, and recommended lesson for the latest completed game.', inputSchema: emptySchema, annotations: { readOnlyHint: true }, execute: async () => textResult(postGameReview ?? { error: 'Complete a game before requesting its review.' }) }))
   addTool(defineTool({ name: 'start_recommended_lesson', title: 'Practise the mentor recommendation', description: 'Starts the unlocked academy lesson recommended by the latest post-game review.', inputSchema: emptySchema, annotations: { readOnlyHint: false }, execute: async () => {
     const lesson = postGameReview ? lessonById(postGameReview.recommendedLessonId) : undefined

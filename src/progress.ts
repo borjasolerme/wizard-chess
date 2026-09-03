@@ -1,5 +1,6 @@
 import { lessons, type Lesson } from './lesson'
 import type { MentorMemory, PostGameReview } from './mentor'
+import { startingRating } from './rating'
 
 export type LessonHistory = {
   id: string
@@ -19,15 +20,19 @@ export type GameHistory = {
   moves: string[]
   coached?: boolean
   review?: PostGameReview
+  ratingBefore?: number
+  ratingAfter?: number
+  ratingChange?: number
+  opponentRating?: number
   completedAt: string
 }
 
 export type HistoryEntry = LessonHistory | GameHistory
-export type ProgressData = { completedLessonIds: string[]; history: HistoryEntry[]; mentorMemory: MentorMemory }
+export type ProgressData = { completedLessonIds: string[]; history: HistoryEntry[]; mentorMemory: MentorMemory; rating: number }
 export type Trophy = { id: string; title: string; description: string; earned: boolean }
 
 export function emptyProgress(): ProgressData {
-  return { completedLessonIds: [], history: [], mentorMemory: { concepts: [], strengths: [], mistakes: [] } }
+  return { completedLessonIds: [], history: [], mentorMemory: { concepts: [], strengths: [], mistakes: [] }, rating: startingRating }
 }
 
 export function recordLesson(progress: ProgressData, lesson: Lesson, id: string, completedAt: string): ProgressData {
@@ -63,6 +68,7 @@ export function parseProgress(value: string | null): ProgressData {
     return {
       completedLessonIds: Array.isArray(parsed.completedLessonIds) ? parsed.completedLessonIds.filter(id => typeof id === 'string') : [],
       history: Array.isArray(parsed.history) ? parsed.history.filter(entry => entry && typeof entry === 'object').slice(0, 50) as HistoryEntry[] : [],
+      rating: typeof parsed.rating === 'number' && Number.isFinite(parsed.rating) ? Math.max(100, Math.round(parsed.rating)) : startingRating,
       mentorMemory: parsed.mentorMemory && typeof parsed.mentorMemory === 'object' ? {
         concepts: Array.isArray(parsed.mentorMemory.concepts) ? parsed.mentorMemory.concepts.filter(item => typeof item === 'string').slice(-8) : [],
         strengths: Array.isArray(parsed.mentorMemory.strengths) ? parsed.mentorMemory.strengths.filter(item => typeof item === 'string').slice(-8) : [],

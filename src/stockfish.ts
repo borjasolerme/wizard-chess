@@ -1,10 +1,12 @@
+import { opponentRatings } from './rating'
+
 export type EngineDifficulty = 'apprentice' | 'duelist' | 'master'
 export type EngineAnalysis = { bestMove: string | null; scoreCp: number }
 
 const settings: Record<EngineDifficulty, { elo: number; time: number }> = {
-  apprentice: { elo: 1320, time: 120 },
-  duelist: { elo: 1750, time: 250 },
-  master: { elo: 2400, time: 500 },
+  apprentice: { elo: opponentRatings.apprentice, time: 120 },
+  duelist: { elo: opponentRatings.duelist, time: 250 },
+  master: { elo: opponentRatings.master, time: 500 },
 }
 
 export class StockfishEngine {

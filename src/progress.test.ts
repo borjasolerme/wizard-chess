@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { lessons } from './lesson'
-import { emptyProgress, recordGame, recordLesson, trophies } from './progress'
+import { emptyProgress, parseProgress, recordGame, recordLesson, trophies } from './progress'
 
 describe('player progress', () => {
+  it('starts new and existing players at 1200 Elo', () => {
+    expect(emptyProgress().rating).toBe(1200)
+    expect(parseProgress(JSON.stringify({ completedLessonIds: [], history: [] })).rating).toBe(1200)
+  })
+
   it('records completed lessons and awards their trophies', () => {
     const progress = recordLesson(emptyProgress(), lessons[0], 'lesson-1', '2026-01-01T00:00:00.000Z')
     expect(progress.completedLessonIds).toEqual([lessons[0].id])
