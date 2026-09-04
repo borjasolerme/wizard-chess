@@ -71,17 +71,16 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
 
       <section id="lesson" class="context-card lesson-card" hidden>
-        <span id="lesson-position" class="eyebrow"></span>
         <h2 id="lesson-title"></h2>
         <p id="lesson-description"></p>
+        <p class="voice-guidance">Talk to the AI to begin the game, move between pages, and advance.</p>
         <button id="start-lesson" class="primary-action">Begin lesson</button>
       </section>
 
       <section id="ranked-setup" class="context-card play-card" hidden>
-        <span id="game-path" class="eyebrow">Mentor game</span>
         <h2 id="opponent-heading">Choose your opponent</h2>
-        <label for="difficulty">Strength</label>
-        <select id="difficulty"><option value="apprentice">Apprentice · 1320</option><option value="duelist">Duelist · 1750</option><option value="master">Master · 2400</option></select>
+        <p class="voice-guidance">Talk to the AI to begin the game, move between pages, and advance.</p>
+        <select id="difficulty" aria-label="Opponent strength"><option value="apprentice">Apprentice · 1320</option><option value="duelist">Duelist · 1750</option><option value="master">Master · 2400</option></select>
         <button id="new-game" class="primary-action">Begin game</button>
       </section>
 
@@ -127,10 +126,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
       <section id="onboarding-screen" class="onboarding-screen" hidden aria-live="polite">
         <div class="onboarding-card">
-          <span id="onboarding-position" class="eyebrow"></span>
           <h2 id="onboarding-title"></h2>
           <p id="onboarding-copy"></p>
-          <p class="onboarding-voice">Say “next” to continue · “guide me” to hear this again</p>
+          <p class="voice-guidance">Talk to the AI to begin the game, move between pages, and advance.</p>
           <div class="onboarding-actions">
             <button id="onboarding-back" class="secondary-action">Back</button>
             <button id="onboarding-next" class="primary-action">Next</button>
@@ -450,8 +448,6 @@ function recordCurrentGame(result: string) {
 }
 function renderLessonSetup(lesson = nextLesson(progress.completedLessonIds)) {
   currentLesson = lesson
-  const index = lessons.findIndex(candidate => candidate.id === lesson.id)
-  document.querySelector('#lesson-position')!.textContent = `Lesson ${index + 1} of ${lessons.length}`
   document.querySelector('#lesson-title')!.textContent = lesson.title
   document.querySelector('#lesson-description')!.textContent = lesson.description
   document.querySelector('#start-lesson')!.textContent = progress.completedLessonIds.includes(lesson.id) ? 'Practice lesson' : 'Begin lesson'
@@ -698,7 +694,6 @@ function renderOnboarding() {
   if (!activeOnboarding) return
   const steps = onboardingSteps[activeOnboarding.path]
   const step = steps[activeOnboarding.step]
-  document.querySelector('#onboarding-position')!.textContent = step.eyebrow
   document.querySelector('#onboarding-title')!.textContent = step.title
   document.querySelector('#onboarding-copy')!.textContent = step.body
   document.querySelector<HTMLButtonElement>('#onboarding-back')!.textContent = activeOnboarding.step ? 'Back' : 'Choose another path'
@@ -1022,7 +1017,6 @@ function setMode(next: Mode) {
   document.querySelector<HTMLElement>('#ranked-setup')!.hidden = next !== 'ranked'
   if (next === 'learn') renderLessonSetup()
   if (next === 'ranked') {
-    document.querySelector('#game-path')!.textContent = mentorEnabled ? 'Mentor game' : 'Quick battle'
     document.querySelector('#opponent-heading')!.textContent = mentorEnabled ? 'Choose your training opponent' : 'Choose your opponent'
   }
   updateStatus(next === 'learn' ? 'Choose a lesson' : 'Choose an opponent')
