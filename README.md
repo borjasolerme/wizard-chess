@@ -53,7 +53,7 @@ Voice starts automatically when the page has an OpenRouter key or a configured s
 
 ### Voice request flow
 
-The voice controller keeps one microphone stream and analyser alive for the session instead of rebuilding them after every sentence. Each utterance takes this path:
+The voice controller keeps one microphone stream and analyser alive for the session instead of rebuilding them after every sentence. Browser recordings are decoded locally and sent as WAV, the format expected by GPT Audio Mini. Each utterance takes this path:
 
 1. GPT Audio Mini transcribes the audio and chooses one of the same WebMCP actions exposed to browser agents.
 2. The selected action runs against the visible game state.

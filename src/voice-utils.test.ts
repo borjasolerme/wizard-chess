@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { audioFormatFromMime, voiceLanguage } from './voice-utils'
+import { audioBufferToWav, voiceLanguage } from './voice-utils'
 
-describe('audioFormatFromMime', () => {
-  it('maps browser recorder MIME types to OpenRouter formats', () => {
-    expect(audioFormatFromMime('audio/webm;codecs=opus')).toBe('webm')
-    expect(audioFormatFromMime('audio/mp4')).toBe('m4a')
-    expect(audioFormatFromMime('audio/ogg;codecs=opus')).toBe('ogg')
+describe('audioBufferToWav', () => {
+  it('encodes decoded browser audio as mono 16-bit WAV', async () => {
+    const wav = audioBufferToWav({
+      sampleRate: 24_000,
+      numberOfChannels: 2,
+      length: 2,
+      getChannelData: channel => channel === 0 ? new Float32Array([1, -1]) : new Float32Array([0, 0]),
+    })
+    const bytes = new Uint8Array(await wav.arrayBuffer())
+    const view = new DataView(bytes.buffer)
+
+    expect(wav.type).toBe('audio/wav')
+    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe('RIFF')
+    expect(new TextDecoder().decode(bytes.subarray(8, 12))).toBe('WAVE')
+    expect(view.getUint16(22, true)).toBe(1)
+    expect(view.getUint32(24, true)).toBe(24_000)
+    expect(view.getUint32(40, true)).toBe(4)
   })
 })
 

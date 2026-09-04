@@ -19,7 +19,7 @@ describe('voice understanding', () => {
     const result = await handleVoice({
       action: 'understand',
       audio: 'a'.repeat(500),
-      format: 'webm',
+      format: 'wav',
       state: { legalMoves: ['g1f3'] },
       tools: [{ name: 'move_piece', description: 'Move a piece.', inputSchema: { type: 'object' } }],
     }, 'test-key')
@@ -31,7 +31,33 @@ describe('voice understanding', () => {
     expect(request.model).toBe('openai/gpt-audio-mini')
     expect(request.provider).toEqual({ sort: 'latency' })
     expect(request.messages[0].content).toContain('must not invent unseen result data')
-    expect(request.messages[1].content[1]).toEqual({ type: 'input_audio', input_audio: { data: 'a'.repeat(500), format: 'webm' } })
+    expect(request.messages[1].content[1]).toEqual({ type: 'input_audio', input_audio: { data: 'a'.repeat(500), format: 'wav' } })
+  })
+
+  it('rejects browser container audio before calling the OpenAI model', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await handleVoice({
+      action: 'understand',
+      audio: 'a'.repeat(500),
+      format: 'webm',
+      tools: [{ name: 'make_move', description: 'Move a piece.' }],
+    }, 'test-key')
+
+    expect(result).toEqual({ status: 400, json: { error: 'Voice audio must be WAV or MP3.' } })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('does not expose raw provider errors to the player', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      error: { message: 'Provider returned error', metadata: { raw: 'private provider details', user_id: 'private-user-id' } },
+    }), { status: 400 })))
+
+    await expect(handleVoice({
+      action: 'understand', audio: 'a'.repeat(500), format: 'wav',
+      tools: [{ name: 'make_move', description: 'Move a piece.' }],
+    }, 'test-key')).rejects.toThrow('Voice provider could not process the request. Please try again.')
   })
 
   it('speaks with the OpenAI male wizard voice', async () => {
@@ -82,7 +108,7 @@ describe('voice understanding', () => {
       inputSchema: { type: 'object', properties: {} },
     }))
 
-    await handleVoice({ action: 'understand', audio: 'a'.repeat(500), format: 'webm', state: {}, tools }, 'test-key')
+    await handleVoice({ action: 'understand', audio: 'a'.repeat(500), format: 'wav', state: {}, tools }, 'test-key')
 
     const request = JSON.parse(fetchMock.mock.calls[0][1].body)
     const context = JSON.parse(request.messages[1].content[0].text)

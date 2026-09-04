@@ -17,8 +17,12 @@ function headers(apiKey) {
 async function openRouter(path, apiKey, body) {
   const response = await fetch(`${OPENROUTER_URL}${path}`, { method: 'POST', headers: headers(apiKey), body: JSON.stringify(body) })
   if (!response.ok) {
-    const details = await response.text()
-    throw new Error(`OpenRouter ${response.status}: ${details.slice(0, 500)}`)
+    await response.text()
+    if (response.status === 400) throw new Error('Voice provider could not process the request. Please try again.')
+    if (response.status === 401 || response.status === 403) throw new Error('OpenRouter rejected the API key. Check it in Settings.')
+    if (response.status === 402) throw new Error('The OpenRouter account has insufficient credits.')
+    if (response.status === 429) throw new Error('The voice service is busy. Please try again shortly.')
+    throw new Error('The voice service is temporarily unavailable.')
   }
   return response
 }
@@ -64,7 +68,8 @@ export async function handleVoice(body, apiKey = process.env.OPENROUTER_API_KEY)
   if (!body || typeof body !== 'object') return { status: 400, json: { error: 'Invalid request.' } }
 
   if (body.action === 'understand') {
-    const format = ['webm', 'm4a', 'ogg', 'wav', 'mp3', 'aac', 'flac'].includes(body.format) ? body.format : 'webm'
+    if (!['wav', 'mp3'].includes(body.format)) return { status: 400, json: { error: 'Voice audio must be WAV or MP3.' } }
+    const format = body.format
     if (typeof body.audio !== 'string' || body.audio.length < 100 || body.audio.length > 28_000_000) return { status: 400, json: { error: 'Invalid audio recording.' } }
     const tools = sanitizeTools(body.tools)
     if (!tools.length) return { status: 400, json: { error: 'WebMCP tools are required.' } }

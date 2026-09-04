@@ -1,4 +1,4 @@
-import { audioFormatFromMime, blobToBase64, voiceLanguage } from './voice-utils'
+import { audioBufferToWav, blobToBase64, voiceLanguage } from './voice-utils'
 import { voiceRequestHeaders } from './api-key'
 import { immediateToolSpeech } from './voice-response'
 
@@ -127,8 +127,8 @@ export class VoiceController {
       try {
         const recording = await this.recordUtterance()
         if (!this.enabled || this.cancelled) break
-        if (!recording || recording.blob.size < 300) continue
-        await this.process(recording.blob, recording.mime)
+        if (!recording || recording.size < 300) continue
+        await this.process(recording)
       } catch (error) {
         this.enabled = false
         this.setStatus(error instanceof Error ? error.message : String(error))
@@ -162,7 +162,7 @@ export class VoiceController {
     if (context && context.state !== 'closed') await context.close()
   }
 
-  private async recordUtterance(): Promise<{ blob: Blob; mime: string } | null> {
+  private async recordUtterance(): Promise<Blob | null> {
     await this.ensureInput()
     if (!this.enabled || this.cancelled) return null
     this.setStatus('Listening… speak naturally.', 'listening')
@@ -203,16 +203,19 @@ export class VoiceController {
     this.recorder = null
     if (!heardSpeech) return null
     const actualMime = recorder.mimeType || mime || 'audio/webm'
-    return { blob: new Blob(chunks, { type: actualMime }), mime: actualMime }
+    return new Blob(chunks, { type: actualMime })
   }
 
-  private async process(blob: Blob, mime: string) {
+  private async process(blob: Blob) {
     this.setStatus('Understanding…', 'thinking')
+    if (!this.audioContext) throw new Error('The microphone session ended before the recording could be processed.')
+    const decodedAudio = await this.audioContext.decodeAudioData(await blob.arrayBuffer())
+    const wav = audioBufferToWav(decodedAudio)
     const tools = this.options.getTools()
     const interpretation = await postJson<Interpretation>({
       action: 'understand',
-      audio: await blobToBase64(blob),
-      format: audioFormatFromMime(mime),
+      audio: await blobToBase64(wav),
+      format: 'wav',
       state: this.options.getState(),
       tools,
     }, this.options.getApiKey())
